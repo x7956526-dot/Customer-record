@@ -32,6 +32,8 @@
     .kpi { background:#fff; border-radius:12px; padding:12px; box-shadow:0 8px 20px rgba(15,23,42,.06); }
     .kpi .n { font-size:22px; font-weight:700; }
     .badge { color:#fff; padding:3px 8px; border-radius:999px; font-size:12px; }
+    .badge.warn { background:#b45309 !important; }
+    .badge.overdue { background:#dc2626 !important; }
     .hide { display:none !important; }
     .section-title { margin:4px 0 12px; }
     .muted { color:var(--muted); }
@@ -56,17 +58,23 @@
       <button class="tab active" data-tab="dashboard">首页看板</button>
       <button class="tab" data-tab="customers">客户管理</button>
       <button class="tab" data-tab="projects">项目管理</button>
+      <button class="tab" data-tab="quality">质量问题</button>
+      <button class="tab" data-tab="shipments">样机发货</button>
     </div>
 
     <section id="dashboard" class="tab-pane"></section>
     <section id="customers" class="tab-pane hide"></section>
     <section id="projects" class="tab-pane hide"></section>
+    <section id="quality" class="tab-pane hide"></section>
+    <section id="shipments" class="tab-pane hide"></section>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 (() => {
   const STAGES = ['新机会','评估中','打样中','测试中','小批量','量产','暂停','关闭'];
+  const QUALITY_STATUS = ['新建','分析中','待客户回复','待工厂回复','改善中','已关闭'];
+  const SHIPMENT_STATUS = ['待发货','已发货','已签收','测试中','测试完成'];
   const stageColor = { 新机会:'#3b82f6',评估中:'#06b6d4',打样中:'#f59e0b',测试中:'#8b5cf6',小批量:'#6366f1',量产:'#16a34a',暂停:'#6b7280',关闭:'#dc2626' };
   const KEY = 'crm_single_file_v1';
   const now = () => new Date().toISOString();
@@ -80,14 +88,21 @@
   let projectStage = '全部';
   let activeCustomerId = '';
   let activeProjectId = '';
+  let qualityKeyword = '';
+  let shipmentKeyword = '';
 
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (!raw) return { customers: [], projects: [] };
+      if (!raw) return { customers: [], projects: [], qualityIssues: [], shipments: [] };
       const p = JSON.parse(raw);
-      return { customers: Array.isArray(p.customers)?p.customers:[], projects: Array.isArray(p.projects)?p.projects:[] };
-    } catch(e) { return { customers: [], projects: [] }; }
+      return {
+        customers: Array.isArray(p.customers)?p.customers:[],
+        projects: Array.isArray(p.projects)?p.projects:[],
+        qualityIssues: Array.isArray(p.qualityIssues)?p.qualityIssues:[],
+        shipments: Array.isArray(p.shipments)?p.shipments:[]
+      };
+    } catch(e) { return { customers: [], projects: [], qualityIssues: [], shipments: [] }; }
   }
   function save() { localStorage.setItem(KEY, JSON.stringify(data)); }
 
@@ -118,7 +133,13 @@
       const text = await file.text();
       const incoming = JSON.parse(text);
       if (!Array.isArray(incoming.customers) || !Array.isArray(incoming.projects)) throw new Error('格式不正确');
-      data = incoming; save(); renderAll(); alert('导入成功');
+      data = {
+        customers: incoming.customers || [],
+        projects: incoming.projects || [],
+        qualityIssues: incoming.qualityIssues || [],
+        shipments: incoming.shipments || []
+      };
+      save(); renderAll(); alert('导入成功');
     } catch(err) { alert('导入失败：' + err.message); }
     e.target.value = '';
   };
@@ -173,6 +194,9 @@
           products: '',
           requirements: '',
           notes: '',
+          nextFollowDate: '',
+          followItem: '',
+          followDone: false,
           createdAt: ts,
           updatedAt: ts
         };
@@ -196,6 +220,9 @@
         nextAction: nextActionCell,
         owner: ownerCell,
         notes: notesCell,
+        nextFollowDate: '',
+        followItem: '',
+        followDone: false,
         needFollowUp: false,
         followUps: [],
         createdAt: ts,
@@ -228,6 +255,21 @@
     const recent = [...data.projects].sort((a,b) => new Date(b.updatedAt)-new Date(a.updatedAt)).slice(0,5);
     const sevenDays = 7 * 24 * 60 * 60 * 1000;
     const needFollow = data.projects.filter(p => p.needFollowUp || (p.stage!=='关闭' && p.stage!=='暂停' && Date.now()-new Date(p.updatedAt).getTime()>sevenDays));
+    const todayStr = new Date().toISOString().slice(0,10);
+    const reminderRows = [
+      ...data.customers.map(c => ({ type:'客户', name:c.name, followDate:c.nextFollowDate, followItem:c.followItem, done:!!c.followDone })),
+      ...data.projects.map(p => ({ type:'项目', name:p.name, followDate:p.nextFollowDate, followItem:p.followItem, done:!!p.followDone }))
+    ].filter(r => r.followDate && !r.done);
+    const todayFollow = reminderRows.filter(r => r.followDate === todayStr);
+    const overdueFollow = reminderRows.filter(r => r.followDate < todayStr);
+    const openQualityCount = data.qualityIssues.filter(q => q.status !== '已关闭').length;
+    const pendingShipmentCount = data.shipments.filter(s => s.status === '待发货' || s.status === '已发货').length;
+    const recentUpdates = [
+      ...data.customers.map(c => ({ type:'客户', name:c.name, updatedAt:c.updatedAt })),
+      ...data.projects.map(p => ({ type:'项目', name:p.name, updatedAt:p.updatedAt })),
+      ...data.qualityIssues.map(q => ({ type:'质量', name:q.title || q.projectName || '质量记录', updatedAt:q.updatedAt })),
+      ...data.shipments.map(s => ({ type:'发货', name:s.model || s.projectName || '发货记录', updatedAt:s.updatedAt }))
+    ].sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt)).slice(0,10);
 
     box.innerHTML = `
       <div class="kpis">
@@ -236,6 +278,8 @@
         <div class="kpi"><div class="muted">进行中项目</div><div class="n">${(count['评估中']||0)+(count['打样中']||0)+(count['测试中']||0)+(count['小批量']||0)}</div></div>
         <div class="kpi"><div class="muted">测试中项目</div><div class="n">${count['测试中']||0}</div></div>
         <div class="kpi"><div class="muted">暂停项目</div><div class="n">${count['暂停']||0}</div></div>
+        <div class="kpi"><div class="muted">未关闭质量问题</div><div class="n">${openQualityCount}</div></div>
+        <div class="kpi"><div class="muted">待确认样机发货</div><div class="n">${pendingShipmentCount}</div></div>
       </div>
       <div class="card">
         <h3 class="section-title">状态统计</h3>
@@ -246,6 +290,15 @@
       </div>
       <div class="card"><h3 class="section-title">需要跟进项目</h3>
         ${needFollow.length?`<ul>${needFollow.map(p=>`<li>${p.name} - 最后更新：${fmt(p.updatedAt)}</li>`).join('')}</ul>`:'<div class="empty">暂无需要跟进项目</div>'}
+      </div>
+      <div class="card"><h3 class="section-title">今天要跟进</h3>
+        ${todayFollow.length?`<ul>${todayFollow.map(r=>`<li><span class="badge warn">${r.type}</span> ${escapeHtml(r.name)} - ${escapeHtml(r.followItem||'未填写事项')}</li>`).join('')}</ul>`:'<div class="empty">今天无待跟进</div>'}
+      </div>
+      <div class="card"><h3 class="section-title">已逾期未跟进</h3>
+        ${overdueFollow.length?`<ul>${overdueFollow.map(r=>`<li><span class="badge overdue">逾期</span> ${escapeHtml(r.type)}：${escapeHtml(r.name)}（应跟进日期 ${escapeHtml(r.followDate)}）- ${escapeHtml(r.followItem||'未填写事项')}</li>`).join('')}</ul>`:'<div class="empty">暂无逾期</div>'}
+      </div>
+      <div class="card"><h3 class="section-title">最近更新记录</h3>
+        ${recentUpdates.length?`<ul>${recentUpdates.map(r=>`<li>${escapeHtml(r.type)}：${escapeHtml(r.name)} - ${fmt(r.updatedAt)}</li>`).join('')}</ul>`:'<div class="empty">暂无更新</div>'}
       </div>
     `;
   }
@@ -308,6 +361,9 @@
             <div><b>常用产品：</b>${escapeHtml(active.products||'-')}</div>
             <div><b>特殊要求：</b>${escapeHtml(active.requirements||'-')}</div>
             <div><b>备注：</b>${escapeHtml(active.notes||'-')}</div>
+            <div><b>下次跟进日期：</b>${escapeHtml(active.nextFollowDate||'-')}</div>
+            <div><b>跟进事项：</b>${escapeHtml(active.followItem||'-')}</div>
+            <div><b>跟进完成：</b>${active.followDone ? '是' : '否'}</div>
             <div><b>创建时间：</b>${fmt(active.createdAt)}</div>
             <div><b>更新时间：</b>${fmt(active.updatedAt)}</div>
             <div><b>项目数量：</b>${projects.length}</div>
@@ -351,7 +407,7 @@
   }
 
   function openCustomerForm(id='') {
-    const origin = id ? data.customers.find(c => c.id === id) : { name:'',country:'',contact:'',email:'',phone:'',industry:'',application:'',products:'',requirements:'',notes:'' };
+    const origin = id ? data.customers.find(c => c.id === id) : { name:'',country:'',contact:'',email:'',phone:'',industry:'',application:'',products:'',requirements:'',notes:'',nextFollowDate:'',followItem:'',followDone:false };
     const html = `
       <div class="card" id="customerFormCard">
         <h3>${id?'编辑客户':'新增客户'}</h3>
@@ -366,6 +422,9 @@
           ${field('c_products','常用产品/型号',origin.products)}
           ${field('c_requirements','特殊要求',origin.requirements,false,true)}
           ${field('c_notes','备注',origin.notes,false,true)}
+          ${field('c_follow_date','下次跟进日期',origin.nextFollowDate)}
+          ${field('c_follow_item','跟进事项',origin.followItem)}
+          <label><input type="checkbox" id="c_follow_done" ${origin.followDone?'checked':''}/> 跟进已完成</label>
         </div>
         <div class="row"><button class="btn primary" id="saveCustomer">保存</button><button class="btn" id="cancelCustomer">取消</button></div>
       </div>`;
@@ -376,7 +435,8 @@
       const payload = {
         name: val('c_name').trim(), country: val('c_country').trim(), contact: val('c_contact').trim(), email: val('c_email').trim(),
         phone: val('c_phone').trim(), industry: val('c_industry').trim(), application: val('c_application').trim(), products: val('c_products').trim(),
-        requirements: val('c_requirements').trim(), notes: val('c_notes').trim()
+        requirements: val('c_requirements').trim(), notes: val('c_notes').trim(),
+        nextFollowDate: val('c_follow_date').trim(), followItem: val('c_follow_item').trim(), followDone: document.getElementById('c_follow_done').checked
       };
       if (!payload.name) return alert('客户名称不能为空');
       if (id) {
@@ -468,6 +528,9 @@
           <div><b>下一步动作：</b>${escapeHtml(p.nextAction||'-')}</div>
           <div><b>负责人：</b>${escapeHtml(p.owner||'-')}</div>
           <div><b>备注：</b>${escapeHtml(p.notes||'-')}</div>
+          <div><b>下次跟进日期：</b>${escapeHtml(p.nextFollowDate||'-')}</div>
+          <div><b>跟进事项：</b>${escapeHtml(p.followItem||'-')}</div>
+          <div><b>跟进完成：</b>${p.followDone ? '是' : '否'}</div>
           <div><b>更新时间：</b>${fmt(p.updatedAt)}</div>
         </div>
         <hr style="border:none;border-top:1px solid #e5e7eb;margin:12px 0" />
@@ -501,7 +564,7 @@
   function openProjectForm(id='', forceCustomerId='') {
     const origin = id ? data.projects.find(p => p.id===id) : {
       name:'',customerId:forceCustomerId||'',model:'',applicationDesc:'',stage:'新机会',sampleStatus:'',drawingVersion:'',testStatus:'',deliveryStatus:'',
-      startTime:'',endTime:'',risks:'',nextAction:'',owner:'',notes:'',needFollowUp:false,followUps:[]
+      startTime:'',endTime:'',risks:'',nextAction:'',owner:'',notes:'',nextFollowDate:'',followItem:'',followDone:false,needFollowUp:false,followUps:[]
     };
     if (!origin) return;
 
@@ -525,6 +588,9 @@
           ${field('p_next','下一步动作',origin.nextAction,false,true)}
           ${field('p_owner','负责人',origin.owner)}
           ${field('p_notes','备注',origin.notes,false,true)}
+          ${field('p_follow_date','下次跟进日期',origin.nextFollowDate)}
+          ${field('p_follow_item','跟进事项',origin.followItem)}
+          <label><input type="checkbox" id="p_follow_done" ${origin.followDone?'checked':''}/> 跟进已完成</label>
           <label><input type="checkbox" id="p_follow" ${origin.needFollowUp?'checked':''}/> 手动标记需要跟进</label>
         </div>
         <div class="row"><button class="btn primary" id="saveProject">保存</button><button class="btn" id="cancelProject">取消</button></div>
@@ -540,7 +606,7 @@
         startTime: val('p_start').trim(), endTime: val('p_end').trim(),
         stage: val('p_stage'), sampleStatus: val('p_sample').trim(), drawingVersion: val('p_drawing').trim(), testStatus: val('p_test').trim(),
         deliveryStatus: val('p_delivery').trim(), risks: val('p_risks').trim(), nextAction: val('p_next').trim(), owner: val('p_owner').trim(),
-        notes: val('p_notes').trim(),
+        notes: val('p_notes').trim(), nextFollowDate: val('p_follow_date').trim(), followItem: val('p_follow_item').trim(), followDone: document.getElementById('p_follow_done').checked,
         needFollowUp: document.getElementById('p_follow').checked
       };
       if (!payload.name) return alert('项目名称不能为空');
@@ -573,6 +639,158 @@
     renderDashboard();
     renderCustomers();
     renderProjects();
+    renderQuality();
+    renderShipments();
+  }
+
+  function renderQuality() {
+    const box = document.getElementById('quality');
+    const list = data.qualityIssues.filter(i => {
+      const q = qualityKeyword.trim().toLowerCase();
+      if (!q) return true;
+      return [i.customerName, i.projectName, i.title, i.owner, i.status].some(v => (v||'').toLowerCase().includes(q));
+    });
+    box.innerHTML = `
+      <div class="card">
+        <div class="row">
+          <input id="qualitySearch" class="grow" placeholder="搜索：客户/项目/标题/责任人/状态" value="${escapeHtml(qualityKeyword)}" />
+          <button class="btn primary" id="newQualityBtn">新增质量问题</button>
+        </div>
+      </div>
+      <div class="card">
+        <table>
+          <thead><tr><th>客户</th><th>项目</th><th>问题标题</th><th>状态</th><th>严重程度</th><th>截止日期</th><th>操作</th></tr></thead>
+          <tbody>
+            ${list.length ? list.map(i => `<tr>
+              <td>${escapeHtml(i.customerName||'-')}</td>
+              <td>${escapeHtml(i.projectName||'-')}</td>
+              <td>${escapeHtml(i.title||'-')}</td>
+              <td>${escapeHtml(i.status||'-')}</td>
+              <td>${escapeHtml(i.severity||'-')}</td>
+              <td>${escapeHtml(i.deadline||'-')}</td>
+              <td><button class="btn small" data-edit-quality="${i.id}">编辑</button><button class="btn small danger" data-del-quality="${i.id}">删除</button></td>
+            </tr>`).join('') : '<tr><td colspan="7" class="empty">暂无质量问题记录</td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+    document.getElementById('qualitySearch').oninput = (e) => { qualityKeyword = e.target.value; renderQuality(); };
+    document.getElementById('newQualityBtn').onclick = () => openQualityForm();
+    box.querySelectorAll('[data-edit-quality]').forEach(el => el.onclick = () => openQualityForm(el.dataset.editQuality));
+    box.querySelectorAll('[data-del-quality]').forEach(el => el.onclick = () => {
+      if (!confirm('确定删除该质量问题记录吗？')) return;
+      data.qualityIssues = data.qualityIssues.filter(x => x.id !== el.dataset.delQuality);
+      save(); renderAll();
+    });
+  }
+
+  function openQualityForm(id='') {
+    const origin = id ? data.qualityIssues.find(i => i.id === id) : {
+      customerName:'', projectName:'', title:'', description:'', happenDate:'', severity:'中', status:'新建', temporaryAction:'', rootCause:'', improvement:'', owner:'', deadline:'', notes:''
+    };
+    const html = `<div class="card" id="qualityFormCard"><h3>${id?'编辑':'新增'}质量问题</h3>
+      <div class="form-grid">
+        ${field('q_customer','客户名称',origin.customerName)}
+        ${field('q_project','项目名称',origin.projectName)}
+        ${field('q_title','问题标题',origin.title,true)}
+        ${field('q_desc','问题描述',origin.description,false,true)}
+        ${field('q_date','发生日期',origin.happenDate)}
+        ${field('q_severity','严重程度',origin.severity)}
+        <label>当前状态<select id="q_status">${QUALITY_STATUS.map(s=>`<option ${origin.status===s?'selected':''}>${s}</option>`).join('')}</select></label>
+        ${field('q_temp','临时措施',origin.temporaryAction,false,true)}
+        ${field('q_root','根因分析',origin.rootCause,false,true)}
+        ${field('q_improve','改善措施',origin.improvement,false,true)}
+        ${field('q_owner','责任人',origin.owner)}
+        ${field('q_deadline','截止日期',origin.deadline)}
+        ${field('q_notes','备注',origin.notes,false,true)}
+      </div>
+      <div class="row"><button class="btn primary" id="saveQuality">保存</button><button class="btn" id="cancelQuality">取消</button></div></div>`;
+    const target = document.getElementById('quality');
+    target.insertAdjacentHTML('afterbegin', html);
+    document.getElementById('saveQuality').onclick = () => {
+      const payload = {
+        customerName: val('q_customer').trim(), projectName: val('q_project').trim(), title: val('q_title').trim(), description: val('q_desc').trim(),
+        happenDate: val('q_date').trim(), severity: val('q_severity').trim(), status: val('q_status'), temporaryAction: val('q_temp').trim(),
+        rootCause: val('q_root').trim(), improvement: val('q_improve').trim(), owner: val('q_owner').trim(), deadline: val('q_deadline').trim(), notes: val('q_notes').trim()
+      };
+      if (!payload.title) return alert('问题标题不能为空');
+      if (id) data.qualityIssues = data.qualityIssues.map(x => x.id===id ? { ...x, ...payload, updatedAt: now() } : x);
+      else data.qualityIssues.unshift({ id: uid(), ...payload, createdAt: now(), updatedAt: now() });
+      save(); renderAll();
+    };
+    document.getElementById('cancelQuality').onclick = () => document.getElementById('qualityFormCard').remove();
+  }
+
+  function renderShipments() {
+    const box = document.getElementById('shipments');
+    const list = data.shipments.filter(s => {
+      const q = shipmentKeyword.trim().toLowerCase();
+      if (!q) return true;
+      return [s.customerName, s.projectName, s.model, s.trackingNo, s.receiver, s.status].some(v => (v||'').toLowerCase().includes(q));
+    });
+    box.innerHTML = `
+      <div class="card"><div class="row">
+        <input id="shipmentSearch" class="grow" placeholder="搜索：客户/项目/型号/单号/收件人/状态" value="${escapeHtml(shipmentKeyword)}" />
+        <button class="btn primary" id="newShipmentBtn">新增发货记录</button>
+      </div></div>
+      <div class="card">
+        <table>
+          <thead><tr><th>客户</th><th>项目</th><th>型号</th><th>数量</th><th>发货日期</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody>
+            ${list.length ? list.map(s => `<tr>
+              <td>${escapeHtml(s.customerName||'-')}</td>
+              <td>${escapeHtml(s.projectName||'-')}</td>
+              <td>${escapeHtml(s.model||'-')}</td>
+              <td>${escapeHtml(s.qty||'-')}</td>
+              <td>${escapeHtml(s.shipDate||'-')}</td>
+              <td>${escapeHtml(s.status||'-')}</td>
+              <td><button class="btn small" data-edit-shipment="${s.id}">编辑</button><button class="btn small danger" data-del-shipment="${s.id}">删除</button></td>
+            </tr>`).join('') : '<tr><td colspan="7" class="empty">暂无样机发货记录</td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+    document.getElementById('shipmentSearch').oninput = (e) => { shipmentKeyword = e.target.value; renderShipments(); };
+    document.getElementById('newShipmentBtn').onclick = () => openShipmentForm();
+    box.querySelectorAll('[data-edit-shipment]').forEach(el => el.onclick = () => openShipmentForm(el.dataset.editShipment));
+    box.querySelectorAll('[data-del-shipment]').forEach(el => el.onclick = () => {
+      if (!confirm('确定删除该发货记录吗？')) return;
+      data.shipments = data.shipments.filter(x => x.id !== el.dataset.delShipment);
+      save(); renderAll();
+    });
+  }
+
+  function openShipmentForm(id='') {
+    const origin = id ? data.shipments.find(s => s.id === id) : {
+      customerName:'', projectName:'', model:'', qty:'', shipDate:'', trackingNo:'', receiver:'', address:'', status:'待发货', feedback:'', notes:''
+    };
+    const html = `<div class="card" id="shipmentFormCard"><h3>${id?'编辑':'新增'}样机发货记录</h3>
+      <div class="form-grid">
+        ${field('s_customer','客户名称',origin.customerName)}
+        ${field('s_project','项目名称',origin.projectName)}
+        ${field('s_model','样机型号',origin.model,true)}
+        ${field('s_qty','数量',origin.qty)}
+        ${field('s_ship_date','发货日期',origin.shipDate)}
+        ${field('s_tracking','快递单号',origin.trackingNo)}
+        ${field('s_receiver','收件人',origin.receiver)}
+        ${field('s_address','收货地址',origin.address,false,true)}
+        <label>当前状态<select id="s_status">${SHIPMENT_STATUS.map(s=>`<option ${origin.status===s?'selected':''}>${s}</option>`).join('')}</select></label>
+        ${field('s_feedback','反馈情况',origin.feedback,false,true)}
+        ${field('s_notes','备注',origin.notes,false,true)}
+      </div>
+      <div class="row"><button class="btn primary" id="saveShipment">保存</button><button class="btn" id="cancelShipment">取消</button></div></div>`;
+    const target = document.getElementById('shipments');
+    target.insertAdjacentHTML('afterbegin', html);
+    document.getElementById('saveShipment').onclick = () => {
+      const payload = {
+        customerName: val('s_customer').trim(), projectName: val('s_project').trim(), model: val('s_model').trim(), qty: val('s_qty').trim(),
+        shipDate: val('s_ship_date').trim(), trackingNo: val('s_tracking').trim(), receiver: val('s_receiver').trim(), address: val('s_address').trim(),
+        status: val('s_status'), feedback: val('s_feedback').trim(), notes: val('s_notes').trim()
+      };
+      if (!payload.model) return alert('样机型号不能为空');
+      if (id) data.shipments = data.shipments.map(x => x.id===id ? { ...x, ...payload, updatedAt: now() } : x);
+      else data.shipments.unshift({ id: uid(), ...payload, createdAt: now(), updatedAt: now() });
+      save(); renderAll();
+    };
+    document.getElementById('cancelShipment').onclick = () => document.getElementById('shipmentFormCard').remove();
   }
 
   renderAll();
