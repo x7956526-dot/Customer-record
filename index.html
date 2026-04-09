@@ -46,9 +46,10 @@
     <div class="topbar">
       <h2 style="margin:0">客户与项目管理系统（本地单文件）</h2>
       <div class="row">
-        <button class="btn" id="btnExport">导出JSON</button>
-        <button class="btn" id="btnImport">导入JSON</button>
-        <button class="btn" id="btnImportExcel">导入Excel</button>
+        <button class="btn primary" id="btnExportExcel">导出Excel</button>
+        <button class="btn primary" id="btnImportExcel">导入Excel</button>
+        <button class="btn" id="btnExport">导出JSON(备份)</button>
+        <button class="btn" id="btnImport">导入JSON(备份)</button>
         <input id="importFile" type="file" accept="application/json" class="hide" />
         <input id="importExcelFile" type="file" accept=".xlsx,.xls" class="hide" />
       </div>
@@ -145,6 +146,7 @@
   };
 
   document.getElementById('btnImportExcel').onclick = () => document.getElementById('importExcelFile').click();
+  document.getElementById('btnExportExcel').onclick = () => exportExcelWorkbook();
   document.getElementById('importExcelFile').onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -152,17 +154,205 @@
       if (!window.XLSX) throw new Error('Excel解析库加载失败，请联网后重试');
       const arr = await file.arrayBuffer();
       const workbook = XLSX.read(arr, { type: 'array' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-      importExcelRows(rows);
+      importExcelWorkbook(workbook);
       save();
       renderAll();
-      alert(`Excel导入完成，共导入 ${rows.length} 行（空白行已自动跳过）`);
+      alert('Excel导入完成，可继续编辑');
     } catch (err) {
       alert('导入Excel失败：' + (err.message || err));
     }
     e.target.value = '';
   };
+
+  function exportExcelWorkbook() {
+    if (!window.XLSX) return alert('Excel导出库加载失败，请联网后重试');
+    const wb = XLSX.utils.book_new();
+    const customersRows = data.customers.map(c => ({
+      id: c.id || '', 客户名称: c.name || '', 国家: c.country || '', 联系人: c.contact || '', 邮箱: c.email || '', 电话: c.phone || '',
+      行业: c.industry || '', 主要应用: c.application || '', 常用产品型号: c.products || '', 特殊要求: c.requirements || '', 备注: c.notes || '',
+      下次跟进日期: c.nextFollowDate || '', 跟进事项: c.followItem || '', 跟进完成: c.followDone ? '是' : '否', 创建时间: c.createdAt || '', 更新时间: c.updatedAt || ''
+    }));
+    const projectRows = data.projects.map(p => ({
+      id: p.id || '', 项目名称: p.name || '', 客户ID: p.customerId || '', 客户名称: customerName(p.customerId), 产品型号: p.model || '',
+      应用描述: p.applicationDesc || '', 当前阶段: p.stage || '', 样品状态: p.sampleStatus || '', 图纸版本: p.drawingVersion || '', 测试状态: p.testStatus || '',
+      交期状态: p.deliveryStatus || '', 开始时间: p.startTime || '', 完成时间: p.endTime || '', 风险点: p.risks || '', 下一步动作: p.nextAction || '',
+      负责人: p.owner || '', 备注: p.notes || '', 下次跟进日期: p.nextFollowDate || '', 跟进事项: p.followItem || '', 跟进完成: p.followDone ? '是' : '否',
+      手动需要跟进: p.needFollowUp ? '是' : '否', 创建时间: p.createdAt || '', 更新时间: p.updatedAt || ''
+    }));
+    const followRows = data.projects.flatMap(p => (p.followUps || []).map(f => ({
+      id: f.id || '', 项目ID: p.id || '', 项目名称: p.name || '', 客户名称: customerName(p.customerId), 日期: f.date || '', 内容: f.content || '', 创建时间: f.createdAt || ''
+    })));
+    const qualityRows = data.qualityIssues.map(q => ({
+      id: q.id || '', 客户名称: q.customerName || '', 项目名称: q.projectName || '', 问题标题: q.title || '', 问题描述: q.description || '',
+      发生日期: q.happenDate || '', 严重程度: q.severity || '', 当前状态: q.status || '', 临时措施: q.temporaryAction || '', 根因分析: q.rootCause || '',
+      改善措施: q.improvement || '', 责任人: q.owner || '', 截止日期: q.deadline || '', 备注: q.notes || '', 创建时间: q.createdAt || '', 更新时间: q.updatedAt || ''
+    }));
+    const shipmentRows = data.shipments.map(s => ({
+      id: s.id || '', 客户名称: s.customerName || '', 项目名称: s.projectName || '', 样机型号: s.model || '', 数量: s.qty || '',
+      发货日期: s.shipDate || '', 快递单号: s.trackingNo || '', 收件人: s.receiver || '', 收货地址: s.address || '', 当前状态: s.status || '',
+      反馈情况: s.feedback || '', 备注: s.notes || '', 创建时间: s.createdAt || '', 更新时间: s.updatedAt || ''
+    }));
+
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(customersRows), '客户');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(projectRows), '项目');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(followRows), '跟进记录');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(qualityRows), '质量问题');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(shipmentRows), '样机发货');
+    XLSX.writeFile(wb, `crm-data-${new Date().toISOString().slice(0,10)}.xlsx`);
+  }
+
+  function importExcelWorkbook(workbook) {
+    const hasFullSheets = ['客户','项目','跟进记录','质量问题','样机发货'].every(n => workbook.SheetNames.includes(n));
+    if (!hasFullSheets) {
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      importExcelRows(rows);
+      return;
+    }
+
+    const customersRows = XLSX.utils.sheet_to_json(workbook.Sheets['客户'], { defval: '' });
+    const projectRows = XLSX.utils.sheet_to_json(workbook.Sheets['项目'], { defval: '' });
+    const followRows = XLSX.utils.sheet_to_json(workbook.Sheets['跟进记录'], { defval: '' });
+    const qualityRows = XLSX.utils.sheet_to_json(workbook.Sheets['质量问题'], { defval: '' });
+    const shipmentRows = XLSX.utils.sheet_to_json(workbook.Sheets['样机发货'], { defval: '' });
+
+    customersRows.forEach(r => {
+      const id = String(r.id || '').trim() || uid();
+      const payload = {
+        id,
+        name: String(r['客户名称'] || '').trim(),
+        country: String(r['国家'] || '').trim(),
+        contact: String(r['联系人'] || '').trim(),
+        email: String(r['邮箱'] || '').trim(),
+        phone: String(r['电话'] || '').trim(),
+        industry: String(r['行业'] || '').trim(),
+        application: String(r['主要应用'] || '').trim(),
+        products: String(r['常用产品型号'] || '').trim(),
+        requirements: String(r['特殊要求'] || '').trim(),
+        notes: String(r['备注'] || '').trim(),
+        nextFollowDate: normalizeDate(r['下次跟进日期']),
+        followItem: String(r['跟进事项'] || '').trim(),
+        followDone: normalizeBool(r['跟进完成']),
+        createdAt: String(r['创建时间'] || '').trim() || now(),
+        updatedAt: now()
+      };
+      if (!payload.name) return;
+      upsertById(data.customers, payload);
+    });
+
+    projectRows.forEach(r => {
+      const id = String(r.id || '').trim() || uid();
+      let customerId = String(r['客户ID'] || '').trim();
+      const cName = String(r['客户名称'] || '').trim();
+      if (!customerId && cName) {
+        let c = data.customers.find(x => x.name === cName);
+        if (!c) {
+          c = { id: uid(), name: cName, country:'',contact:'',email:'',phone:'',industry:'',application:'',products:'',requirements:'',notes:'',nextFollowDate:'',followItem:'',followDone:false,createdAt:now(),updatedAt:now() };
+          data.customers.unshift(c);
+        }
+        customerId = c.id;
+      }
+      const payload = {
+        id,
+        name: String(r['项目名称'] || '').trim(),
+        customerId,
+        model: String(r['产品型号'] || '').trim(),
+        applicationDesc: String(r['应用描述'] || '').trim(),
+        stage: String(r['当前阶段'] || '').trim() || '新机会',
+        sampleStatus: String(r['样品状态'] || '').trim(),
+        drawingVersion: String(r['图纸版本'] || '').trim(),
+        testStatus: String(r['测试状态'] || '').trim(),
+        deliveryStatus: String(r['交期状态'] || '').trim(),
+        startTime: normalizeDate(r['开始时间']),
+        endTime: normalizeDate(r['完成时间']),
+        risks: String(r['风险点'] || '').trim(),
+        nextAction: String(r['下一步动作'] || '').trim(),
+        owner: String(r['负责人'] || '').trim(),
+        notes: String(r['备注'] || '').trim(),
+        nextFollowDate: normalizeDate(r['下次跟进日期']),
+        followItem: String(r['跟进事项'] || '').trim(),
+        followDone: normalizeBool(r['跟进完成']),
+        needFollowUp: normalizeBool(r['手动需要跟进']),
+        followUps: [],
+        createdAt: String(r['创建时间'] || '').trim() || now(),
+        updatedAt: now()
+      };
+      if (!payload.name || !payload.customerId) return;
+      upsertById(data.projects, payload);
+    });
+
+    // 跟进记录导入
+    const followMap = {};
+    followRows.forEach(r => {
+      const projectId = String(r['项目ID'] || '').trim();
+      if (!projectId) return;
+      const rec = {
+        id: String(r.id || '').trim() || uid(),
+        date: normalizeDate(r['日期']),
+        content: String(r['内容'] || '').trim(),
+        createdAt: String(r['创建时间'] || '').trim() || now()
+      };
+      if (!rec.content) return;
+      if (!followMap[projectId]) followMap[projectId] = [];
+      followMap[projectId].push(rec);
+    });
+    data.projects = data.projects.map(p => ({ ...p, followUps: followMap[p.id] || p.followUps || [], updatedAt: now() }));
+
+    qualityRows.forEach(r => {
+      const payload = {
+        id: String(r.id || '').trim() || uid(),
+        customerName: String(r['客户名称'] || '').trim(),
+        projectName: String(r['项目名称'] || '').trim(),
+        title: String(r['问题标题'] || '').trim(),
+        description: String(r['问题描述'] || '').trim(),
+        happenDate: normalizeDate(r['发生日期']),
+        severity: String(r['严重程度'] || '').trim(),
+        status: String(r['当前状态'] || '').trim() || '新建',
+        temporaryAction: String(r['临时措施'] || '').trim(),
+        rootCause: String(r['根因分析'] || '').trim(),
+        improvement: String(r['改善措施'] || '').trim(),
+        owner: String(r['责任人'] || '').trim(),
+        deadline: normalizeDate(r['截止日期']),
+        notes: String(r['备注'] || '').trim(),
+        createdAt: String(r['创建时间'] || '').trim() || now(),
+        updatedAt: now()
+      };
+      if (!payload.title) return;
+      upsertById(data.qualityIssues, payload);
+    });
+
+    shipmentRows.forEach(r => {
+      const payload = {
+        id: String(r.id || '').trim() || uid(),
+        customerName: String(r['客户名称'] || '').trim(),
+        projectName: String(r['项目名称'] || '').trim(),
+        model: String(r['样机型号'] || '').trim(),
+        qty: String(r['数量'] || '').trim(),
+        shipDate: normalizeDate(r['发货日期']),
+        trackingNo: String(r['快递单号'] || '').trim(),
+        receiver: String(r['收件人'] || '').trim(),
+        address: String(r['收货地址'] || '').trim(),
+        status: String(r['当前状态'] || '').trim() || '待发货',
+        feedback: String(r['反馈情况'] || '').trim(),
+        notes: String(r['备注'] || '').trim(),
+        createdAt: String(r['创建时间'] || '').trim() || now(),
+        updatedAt: now()
+      };
+      if (!payload.model) return;
+      upsertById(data.shipments, payload);
+    });
+  }
+
+  function upsertById(arr, payload) {
+    const idx = arr.findIndex(x => x.id === payload.id);
+    if (idx >= 0) arr[idx] = { ...arr[idx], ...payload };
+    else arr.unshift(payload);
+  }
+
+  function normalizeBool(v) {
+    const s = String(v ?? '').trim().toLowerCase();
+    return ['1','true','是','已完成','y','yes'].includes(s);
+  }
 
   function importExcelRows(rows) {
     const ts = now();
