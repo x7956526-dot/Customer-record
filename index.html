@@ -22,14 +22,15 @@
     .btn { border:none; border-radius:8px; padding:8px 12px; cursor:pointer; background:#e2e8f0; }
     .btn.primary { background:var(--primary); color:#fff; }
     .btn.danger { background:#dc2626; color:#fff; }
-    .btn.small { padding:5px 8px; font-size:12px; }
+    .btn.small { padding:3px 6px; font-size:11px; }
     table { width:100%; border-collapse:collapse; }
     th,td { border-bottom:1px solid var(--line); padding:10px 8px; text-align:left; vertical-align:top; }
     th { background:#f8fafc; }
-    .table-compact th { white-space: nowrap; }
+    .table-compact th, .table-compact td { white-space: nowrap; padding:6px 6px; font-size:13px; }
     .proj-name { font-weight: 600; }
-    .subline { margin-top:4px; color:var(--muted); font-size:12px; }
-    .ellipsis { max-width:360px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }
+    .subline { margin-top:2px; color:var(--muted); font-size:11px; }
+    .ellipsis { max-width:360px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; white-space:normal; line-height:1.2; }
+    .small-time { font-size:12px; color:var(--muted); }
     .empty { color:var(--muted); text-align:center; padding:16px; }
     .grid-2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:10px; }
     .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; }
@@ -99,6 +100,8 @@
   let projectStatusFilter = '默认';
   let projectPriorityFilter = '全部';
   let projectSort = '智能优先(逾期/今天/本周/最近更新)';
+  let projectPage = 1;
+  let projectPageSize = 20;
   let showArchiveProjects = false;
   let activeCustomerId = '';
   let activeProjectId = '';
@@ -398,7 +401,7 @@
 
   function renderProjects() {
     const box = document.getElementById('projects');
-    const rows = data.projects.filter(p => {
+    const filteredRows = data.projects.filter(p => {
       const status = p.workStatus || '进行中';
       const q = projectKeyword.trim().toLowerCase();
       const passQ = !q || [p.name, customerName(p.customerId), p.model, p.stage, p.nextAction].some(v => (v||'').toLowerCase().includes(q));
@@ -411,6 +414,11 @@
       const passArchive = showArchiveProjects ? ['已完成','已归档'].includes(status) : true;
       return passQ && passStage && passCustomer && passPriority && passStatus && passArchive;
     }).sort((a,b) => sortProjects(a,b));
+    const total = filteredRows.length;
+    const totalPages = Math.max(1, Math.ceil(total / projectPageSize));
+    if (projectPage > totalPages) projectPage = totalPages;
+    const start = (projectPage - 1) * projectPageSize;
+    const rows = filteredRows.slice(start, start + projectPageSize);
 
     const customerOptions = ['<option>全部</option>', ...data.customers.map(c => `<option value="${c.id}" ${projectCustomerFilter===c.id?'selected':''}>${escapeHtml(c.name)}</option>`)].join('');
     box.innerHTML = `
@@ -429,18 +437,32 @@
         <td>${escapeHtml(customerName(p.customerId))}</td>
         <td><div class="proj-name">${escapeHtml(p.name)}</div><div class="subline">优先级：<span class="badge" style="background:${p.priority==='高'?'#dc2626':(p.priority==='中'?'#b45309':'#475569')}">${escapeHtml(p.priority||'中')}</span></div></td>
         <td><span class="badge" style="background:${statusColor(p.workStatus)}">${escapeHtml(p.workStatus||'进行中')}</span></td>
-        <td><span class="ellipsis">${escapeHtml(p.nextAction||'-')}</span></td><td>${escapeHtml(p.nextFollowDate||'-')}</td><td>${fmt(p.updatedAt)}</td>
+        <td><span class="ellipsis">${escapeHtml(p.nextAction||'-')}</span></td><td>${escapeHtml(p.nextFollowDate||'-')}</td><td><span class="small-time">${fmt(p.updatedAt)}</span></td>
         <td>${!['已完成','已归档'].includes(p.workStatus||'进行中') ? `<button class="btn small" data-complete-project="${p.id}">标记完成</button>` : ''}<button class="btn small" data-copy-project="${p.id}">复制</button><button class="btn small" data-edit-project="${p.id}">编辑</button><button class="btn small danger" data-del-project="${p.id}">删除</button></td>
       </tr>`).join('') : '<tr><td colspan="7" class="empty">暂无项目</td></tr>'}
-      </tbody></table></div>`;
+      </tbody></table></div>
+      <div class="card"><div class="row">
+        <span class="muted">总项目：${total}</span>
+        <label style="margin:0;">每页
+          <select id="projectPageSizeSel" style="width:90px; margin-left:6px;">
+            ${[10,20,50,100].map(n => `<option value="${n}" ${projectPageSize===n?'selected':''}>${n}</option>`).join('')}
+          </select>
+        </label>
+        <button class="btn small" id="projectPrevPage" ${projectPage<=1?'disabled':''}>上一页</button>
+        <span class="muted">第 ${projectPage} / ${totalPages} 页</span>
+        <button class="btn small" id="projectNextPage" ${projectPage>=totalPages?'disabled':''}>下一页</button>
+      </div></div>`;
 
-    document.getElementById('projectSearch').oninput = e => { projectKeyword = e.target.value; renderProjects(); };
-    document.getElementById('projectCustomerSel').onchange = e => { projectCustomerFilter = e.target.value; renderProjects(); };
-    document.getElementById('projectStatusSel').onchange = e => { projectStatusFilter = e.target.value; renderProjects(); };
-    document.getElementById('projectPrioritySel').onchange = e => { projectPriorityFilter = e.target.value; renderProjects(); };
-    document.getElementById('projectStageSel').onchange = e => { projectStage = e.target.value; renderProjects(); };
-    document.getElementById('projectSortSel').onchange = e => { projectSort = e.target.value; renderProjects(); };
-    document.getElementById('archiveToggleBtn').onclick = () => { showArchiveProjects = !showArchiveProjects; projectStatusFilter = showArchiveProjects ? '全部' : '默认'; renderProjects(); };
+    document.getElementById('projectSearch').oninput = e => { projectKeyword = e.target.value; projectPage = 1; renderProjects(); };
+    document.getElementById('projectCustomerSel').onchange = e => { projectCustomerFilter = e.target.value; projectPage = 1; renderProjects(); };
+    document.getElementById('projectStatusSel').onchange = e => { projectStatusFilter = e.target.value; projectPage = 1; renderProjects(); };
+    document.getElementById('projectPrioritySel').onchange = e => { projectPriorityFilter = e.target.value; projectPage = 1; renderProjects(); };
+    document.getElementById('projectStageSel').onchange = e => { projectStage = e.target.value; projectPage = 1; renderProjects(); };
+    document.getElementById('projectSortSel').onchange = e => { projectSort = e.target.value; projectPage = 1; renderProjects(); };
+    document.getElementById('projectPageSizeSel').onchange = e => { projectPageSize = Number(e.target.value) || 20; projectPage = 1; renderProjects(); };
+    document.getElementById('projectPrevPage').onclick = () => { if (projectPage > 1) { projectPage -= 1; renderProjects(); } };
+    document.getElementById('projectNextPage').onclick = () => { if (projectPage < totalPages) { projectPage += 1; renderProjects(); } };
+    document.getElementById('archiveToggleBtn').onclick = () => { showArchiveProjects = !showArchiveProjects; projectStatusFilter = showArchiveProjects ? '全部' : '默认'; projectPage = 1; renderProjects(); };
     document.getElementById('newProjectBtn').onclick = () => openProjectForm();
 
     box.querySelectorAll('[data-edit-project]').forEach(el => el.onclick = () => openProjectForm(el.dataset.editProject));
@@ -448,11 +470,13 @@
     box.querySelectorAll('[data-complete-project]').forEach(el => el.onclick = () => {
       const id = el.dataset.completeProject;
       data.projects = data.projects.map(p => p.id===id ? { ...p, workStatus:'已完成', completeDate:new Date().toISOString().slice(0,10), updatedAt: now() } : p);
+      projectPage = 1;
       save(); renderAll();
     });
     box.querySelectorAll('[data-del-project]').forEach(el => el.onclick = () => {
       if (!confirm('确定删除该项目吗？')) return;
       data.projects = data.projects.filter(p => p.id !== el.dataset.delProject);
+      projectPage = 1;
       save(); renderAll();
     });
   }
@@ -509,6 +533,7 @@
       if (!payload.customerId) return alert('请选择所属客户');
       if (id) data.projects = data.projects.map(p => p.id===id ? { ...p, ...payload, updatedAt: now() } : p);
       else data.projects.unshift({ id: uid(), ...payload, followUps:[], createdAt: now(), updatedAt: now() });
+      projectPage = 1;
       save(); renderAll();
     };
     document.getElementById('cancelProject').onclick = () => {
