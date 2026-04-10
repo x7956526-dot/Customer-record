@@ -113,7 +113,22 @@
   let qualityKeyword = '';
   let qualityPage = 1;
   let qualityPageSize = 20;
+  let qualityCustomerFilter = '全部';
+  let qualityStatusFilter = '全部';
+  let qualitySourceFilter = '全部';
+  let qualityOwnerFilter = '全部';
+  let qualityArchiveFilter = '未归档';
+  let qualitySort = '更新时间(新->旧)';
+  let showQualityArchived = false;
   let shipmentKeyword = '';
+  let shipmentPage = 1;
+  let shipmentPageSize = 20;
+  let shipmentCustomerFilter = '全部';
+  let shipmentStatusFilter = '全部';
+  let shipmentFeedbackFilter = '全部';
+  let shipmentArchiveFilter = '未归档';
+  let shipmentSort = '更新时间(新->旧)';
+  let showShipmentArchived = false;
 
   function load() {
     try {
@@ -123,14 +138,20 @@
       return {
         customers: Array.isArray(p.customers)?p.customers:[],
         projects: (Array.isArray(p.projects)?p.projects:[]).map(normalizeProject),
-        qualityIssues: Array.isArray(p.qualityIssues)?p.qualityIssues:[],
-        shipments: Array.isArray(p.shipments)?p.shipments:[]
+        qualityIssues: (Array.isArray(p.qualityIssues)?p.qualityIssues:[]).map(normalizeQuality),
+        shipments: (Array.isArray(p.shipments)?p.shipments:[]).map(normalizeShipment)
       };
     } catch(e) { return { customers: [], projects: [], qualityIssues: [], shipments: [] }; }
   }
   function save() { localStorage.setItem(KEY, JSON.stringify(data)); }
   function normalizeProject(p) {
     return { projectCode:'', workStatus:'进行中', priority:'中', completeDate:'', nextFollowDate:'', followItem:'', followDone:false, needFollowUp:false, followUps:[], ...p };
+  }
+  function normalizeQuality(q) {
+    return { complaintNo:'', source:'客户投诉', responsibility:'待确认', isClosed:false, closeDate:'', archived:false, attachments:[], followLogs:[], ...q };
+  }
+  function normalizeShipment(s) {
+    return { receivedFeedback:false, archived:false, attachments:[], followLogs:[], ...s };
   }
 
   function setTab(tab) {
@@ -156,8 +177,8 @@
       data = {
         customers: incoming.customers || [],
         projects: (incoming.projects || []).map(normalizeProject),
-        qualityIssues: incoming.qualityIssues || [],
-        shipments: incoming.shipments || []
+        qualityIssues: (incoming.qualityIssues || []).map(normalizeQuality),
+        shipments: (incoming.shipments || []).map(normalizeShipment)
       };
       save(); renderAll(); alert('导入成功');
     } catch (err) { alert('导入失败：' + err.message); }
@@ -194,8 +215,8 @@
       手动需要跟进:p.needFollowUp?'是':'否', 创建时间:p.createdAt||'', 更新时间:p.updatedAt||''
     }));
     const followRows = data.projects.flatMap(p => (p.followUps||[]).map(f => ({ id:f.id||'', 项目ID:p.id||'', 项目名称:p.name||'', 客户名称:customerName(p.customerId), 日期:f.date||'', 内容:f.content||'', 创建时间:f.createdAt||'' })));
-    const qualityRows = data.qualityIssues.map(q => ({ id:q.id||'', 质量投诉号:q.complaintNo||'', 客户名称:q.customerName||'', 项目名称:q.projectName||'', 问题标题:q.title||'', 问题描述:q.description||'', 发生日期:q.happenDate||'', 严重程度:q.severity||'', 问题来源:q.source||'', 责任归属:q.responsibility||'', 当前状态:q.status||'', 是否已关闭:q.isClosed?'是':'否', 关闭日期:q.closeDate||'', 临时措施:q.temporaryAction||'', 根因分析:q.rootCause||'', 改善措施:q.improvement||'', 责任人:q.owner||'', 截止日期:q.deadline||'', 备注:q.notes||'', 创建时间:q.createdAt||'', 更新时间:q.updatedAt||'' }));
-    const shipmentRows = data.shipments.map(s => ({ id:s.id||'', 客户名称:s.customerName||'', 项目名称:s.projectName||'', 样机型号:s.model||'', 数量:s.qty||'', 发货日期:s.shipDate||'', 快递单号:s.trackingNo||'', 收件人:s.receiver||'', 收货地址:s.address||'', 当前状态:s.status||'', 是否收到反馈:s.receivedFeedback?'是':'否', 反馈情况:s.feedback||'', 备注:s.notes||'', 创建时间:s.createdAt||'', 更新时间:s.updatedAt||'' }));
+    const qualityRows = data.qualityIssues.map(q => ({ id:q.id||'', 质量投诉号:q.complaintNo||'', 客户名称:q.customerName||'', 项目名称:q.projectName||'', 问题标题:q.title||'', 问题描述:q.description||'', 发生日期:q.happenDate||'', 严重程度:q.severity||'', 问题来源:q.source||'', 责任归属:q.responsibility||'', 当前状态:q.status||'', 是否已关闭:q.isClosed?'是':'否', 关闭日期:q.closeDate||'', 是否归档:q.archived?'是':'否', 附件JSON:JSON.stringify(q.attachments||[]), 临时措施:q.temporaryAction||'', 根因分析:q.rootCause||'', 改善措施:q.improvement||'', 责任人:q.owner||'', 截止日期:q.deadline||'', 备注:q.notes||'', 创建时间:q.createdAt||'', 更新时间:q.updatedAt||'' }));
+    const shipmentRows = data.shipments.map(s => ({ id:s.id||'', 客户名称:s.customerName||'', 项目名称:s.projectName||'', 样机型号:s.model||'', 数量:s.qty||'', 发货日期:s.shipDate||'', 快递单号:s.trackingNo||'', 收件人:s.receiver||'', 收货地址:s.address||'', 当前状态:s.status||'', 是否收到反馈:s.receivedFeedback?'是':'否', 是否归档:s.archived?'是':'否', 附件JSON:JSON.stringify(s.attachments||[]), 反馈情况:s.feedback||'', 备注:s.notes||'', 创建时间:s.createdAt||'', 更新时间:s.updatedAt||'' }));
 
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(customersRows), '客户');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(projectRows), '项目');
@@ -251,12 +272,16 @@
     data.projects = data.projects.map(p => ({ ...p, followUps: followMap[p.id] || p.followUps || [], updatedAt: now() }));
 
     XLSX.utils.sheet_to_json(workbook.Sheets['质量问题'], { defval:'' }).forEach(r => {
-      const payload = { id:String(r.id||'').trim()||uid(), complaintNo:String(r['质量投诉号']||'').trim(), customerName:String(r['客户名称']||'').trim(), projectName:String(r['项目名称']||'').trim(), title:String(r['问题标题']||'').trim(), description:String(r['问题描述']||'').trim(), happenDate:normalizeDate(r['发生日期']), severity:String(r['严重程度']||'').trim(), source:String(r['问题来源']||'').trim(), responsibility:String(r['责任归属']||'').trim(), status:String(r['当前状态']||'').trim()||'新建', isClosed:normalizeBool(r['是否已关闭']), closeDate:normalizeDate(r['关闭日期']), temporaryAction:String(r['临时措施']||'').trim(), rootCause:String(r['根因分析']||'').trim(), improvement:String(r['改善措施']||'').trim(), owner:String(r['责任人']||'').trim(), deadline:normalizeDate(r['截止日期']), notes:String(r['备注']||'').trim(), createdAt:String(r['创建时间']||'').trim()||now(), updatedAt:now() };
+      let attachments = [];
+      try { attachments = JSON.parse(r['附件JSON'] || '[]'); } catch {}
+      const payload = normalizeQuality({ id:String(r.id||'').trim()||uid(), complaintNo:String(r['质量投诉号']||'').trim(), customerName:String(r['客户名称']||'').trim(), projectName:String(r['项目名称']||'').trim(), title:String(r['问题标题']||'').trim(), description:String(r['问题描述']||'').trim(), happenDate:normalizeDate(r['发生日期']), severity:String(r['严重程度']||'').trim(), source:String(r['问题来源']||'').trim(), responsibility:String(r['责任归属']||'').trim(), status:String(r['当前状态']||'').trim()||'新建', isClosed:normalizeBool(r['是否已关闭']), closeDate:normalizeDate(r['关闭日期']), archived:normalizeBool(r['是否归档']), attachments, temporaryAction:String(r['临时措施']||'').trim(), rootCause:String(r['根因分析']||'').trim(), improvement:String(r['改善措施']||'').trim(), owner:String(r['责任人']||'').trim(), deadline:normalizeDate(r['截止日期']), notes:String(r['备注']||'').trim(), createdAt:String(r['创建时间']||'').trim()||now(), updatedAt:now() });
       if (!payload.title) return; upsertById(data.qualityIssues, payload);
     });
 
     XLSX.utils.sheet_to_json(workbook.Sheets['样机发货'], { defval:'' }).forEach(r => {
-      const payload = { id:String(r.id||'').trim()||uid(), customerName:String(r['客户名称']||'').trim(), projectName:String(r['项目名称']||'').trim(), model:String(r['样机型号']||'').trim(), qty:String(r['数量']||'').trim(), shipDate:normalizeDate(r['发货日期']), trackingNo:String(r['快递单号']||'').trim(), receiver:String(r['收件人']||'').trim(), address:String(r['收货地址']||'').trim(), status:String(r['当前状态']||'').trim()||'待发货', receivedFeedback:normalizeBool(r['是否收到反馈']), feedback:String(r['反馈情况']||'').trim(), notes:String(r['备注']||'').trim(), createdAt:String(r['创建时间']||'').trim()||now(), updatedAt:now() };
+      let attachments = [];
+      try { attachments = JSON.parse(r['附件JSON'] || '[]'); } catch {}
+      const payload = normalizeShipment({ id:String(r.id||'').trim()||uid(), customerName:String(r['客户名称']||'').trim(), projectName:String(r['项目名称']||'').trim(), model:String(r['样机型号']||'').trim(), qty:String(r['数量']||'').trim(), shipDate:normalizeDate(r['发货日期']), trackingNo:String(r['快递单号']||'').trim(), receiver:String(r['收件人']||'').trim(), address:String(r['收货地址']||'').trim(), status:String(r['当前状态']||'').trim()||'待发货', receivedFeedback:normalizeBool(r['是否收到反馈']), archived:normalizeBool(r['是否归档']), attachments, feedback:String(r['反馈情况']||'').trim(), notes:String(r['备注']||'').trim(), createdAt:String(r['创建时间']||'').trim()||now(), updatedAt:now() });
       if (!payload.model) return; upsertById(data.shipments, payload);
     });
   }
@@ -608,18 +633,38 @@
 
   function renderQuality() {
     const box = document.getElementById('quality');
-    const filtered = data.qualityIssues.filter(i => {
+    const customerOptions = ['<option>全部</option>', ...[...new Set(data.qualityIssues.map(i => i.customerName).filter(Boolean))].map(n => `<option ${qualityCustomerFilter===n?'selected':''}>${escapeHtml(n)}</option>`)].join('');
+    const filtered = data.qualityIssues.filter(raw => {
+      const i = normalizeQuality(raw);
       const q = qualityKeyword.trim().toLowerCase();
-      return !q || [i.complaintNo,i.customerName, i.projectName, i.title, i.owner, i.status, i.source, i.responsibility].some(v => (v||'').toLowerCase().includes(q));
+      const passQ = !q || [i.complaintNo,i.customerName,i.title].some(v => (v||'').toLowerCase().includes(q));
+      const passC = qualityCustomerFilter === '全部' || i.customerName === qualityCustomerFilter;
+      const passS = qualityStatusFilter === '全部' || i.status === qualityStatusFilter;
+      const passSrc = qualitySourceFilter === '全部' || i.source === qualitySourceFilter;
+      const passOwn = qualityOwnerFilter === '全部' || i.responsibility === qualityOwnerFilter;
+      const passArc = qualityArchiveFilter === '全部' ? true : (qualityArchiveFilter === '已归档' ? !!i.archived : !i.archived);
+      const passView = showQualityArchived ? !!i.archived : true;
+      return passQ && passC && passS && passSrc && passOwn && passArc && passView;
+    }).sort((a,b) => {
+      if (qualitySort === '截止日期(近->远)') return (a.deadline || '9999-12-31').localeCompare(b.deadline || '9999-12-31');
+      if (qualitySort === '创建时间(新->旧)') return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
     });
     const total = filtered.length;
     const totalPages = Math.max(1, Math.ceil(total / qualityPageSize));
     if (qualityPage > totalPages) qualityPage = totalPages;
     const list = filtered.slice((qualityPage - 1) * qualityPageSize, qualityPage * qualityPageSize);
-    box.innerHTML = `<div class="card"><div class="row"><input id="qualitySearch" class="grow" placeholder="搜索质量问题" value="${escapeHtml(qualityKeyword)}" /><button class="btn primary" id="newQualityBtn">新增质量问题</button></div></div>
-    <div class="card"><table><thead><tr><th>投诉号</th><th>客户</th><th>问题标题</th><th>来源/归属</th><th>状态</th><th>截止日期</th><th>操作</th></tr></thead><tbody>${list.length ? list.map(i => `<tr><td>${escapeHtml(i.complaintNo||'-')}</td><td>${escapeHtml(i.customerName||'-')}</td><td>${escapeHtml(i.title||'-')}</td><td>${escapeHtml((i.source||'-') + ' / ' + (i.responsibility||'-'))}</td><td>${escapeHtml(i.status||'-')}</td><td>${escapeHtml(i.deadline||'-')}</td><td><button class="btn small" data-addlog-quality="${i.id}">+跟进</button><button class="btn small" data-edit-quality="${i.id}">编辑</button><button class="btn small danger" data-del-quality="${i.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="7" class="empty">暂无质量问题记录</td></tr>'}</tbody></table></div>
+    box.innerHTML = `<div class="card"><div class="row"><input id="qualitySearch" class="grow" placeholder="搜索：投诉号/客户/问题标题" value="${escapeHtml(qualityKeyword)}" /><select id="qualityCustomerSel" style="max-width:150px">${customerOptions}</select><select id="qualityStatusSel" style="max-width:130px">${['全部',...QUALITY_STATUS].map(s=>`<option ${qualityStatusFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualitySourceSel" style="max-width:130px">${['全部',...QUALITY_SOURCES].map(s=>`<option ${qualitySourceFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualityOwnerSel" style="max-width:130px">${['全部',...QUALITY_OWNERS].map(s=>`<option ${qualityOwnerFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualityArchiveSel" style="max-width:120px">${['未归档','已归档','全部'].map(s=>`<option ${qualityArchiveFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualitySortSel" style="max-width:150px">${['更新时间(新->旧)','截止日期(近->远)','创建时间(新->旧)'].map(s=>`<option ${qualitySort===s?'selected':''}>${s}</option>`).join('')}</select><button class="btn" id="qualityArchiveToggle">${showQualityArchived?'返回未归档':'查看归档质量问题'}</button><button class="btn primary" id="newQualityBtn">新增质量问题</button></div></div>
+    <div class="card"><table><thead><tr><th>投诉号</th><th>客户</th><th>问题标题</th><th>来源/归属</th><th>状态</th><th>截止日期</th><th>操作</th></tr></thead><tbody>${list.length ? list.map(i => `<tr><td>${escapeHtml(i.complaintNo||'-')}</td><td>${escapeHtml(i.customerName||'-')}</td><td>${escapeHtml(i.title||'-')}</td><td>${escapeHtml((i.source||'-') + ' / ' + (i.responsibility||'-'))}</td><td>${escapeHtml(i.status||'-')}</td><td>${escapeHtml(i.deadline||'-')}</td><td><button class="btn small" data-addlog-quality="${i.id}">+跟进</button>${i.archived?`<button class="btn small" data-restore-quality="${i.id}">恢复</button>`:`${i.status==='已关闭'||i.isClosed?`<button class="btn small" data-archive-quality="${i.id}">归档</button>`:''}`}<button class="btn small" data-edit-quality="${i.id}">编辑</button><button class="btn small danger" data-del-quality="${i.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="7" class="empty">暂无质量问题记录</td></tr>'}</tbody></table></div>
     <div class="card"><div class="row"><span class="muted">总质量问题：${total}</span><label style="margin:0;">每页<select id="qualityPageSizeSel" style="width:90px; margin-left:6px;">${[10,20,50,100].map(n => `<option value="${n}" ${qualityPageSize===n?'selected':''}>${n}</option>`).join('')}</select></label><button class="btn small" id="qualityPrevPage" ${qualityPage<=1?'disabled':''}>上一页</button><span class="muted">第 ${qualityPage} / ${totalPages} 页</span><button class="btn small" id="qualityNextPage" ${qualityPage>=totalPages?'disabled':''}>下一页</button></div></div>`;
     document.getElementById('qualitySearch').oninput = e => { qualityKeyword = e.target.value; qualityPage = 1; renderQuality(); };
+    document.getElementById('qualityCustomerSel').onchange = e => { qualityCustomerFilter = e.target.value; qualityPage=1; renderQuality(); };
+    document.getElementById('qualityStatusSel').onchange = e => { qualityStatusFilter = e.target.value; qualityPage=1; renderQuality(); };
+    document.getElementById('qualitySourceSel').onchange = e => { qualitySourceFilter = e.target.value; qualityPage=1; renderQuality(); };
+    document.getElementById('qualityOwnerSel').onchange = e => { qualityOwnerFilter = e.target.value; qualityPage=1; renderQuality(); };
+    document.getElementById('qualityArchiveSel').onchange = e => { qualityArchiveFilter = e.target.value; qualityPage=1; renderQuality(); };
+    document.getElementById('qualitySortSel').onchange = e => { qualitySort = e.target.value; qualityPage=1; renderQuality(); };
+    document.getElementById('qualityArchiveToggle').onclick = () => { showQualityArchived = !showQualityArchived; qualityArchiveFilter = showQualityArchived ? '已归档' : '未归档'; qualityPage=1; renderQuality(); };
     document.getElementById('qualityPageSizeSel').onchange = e => { qualityPageSize = Number(e.target.value)||20; qualityPage = 1; renderQuality(); };
     document.getElementById('qualityPrevPage').onclick = () => { if (qualityPage > 1) { qualityPage -= 1; renderQuality(); } };
     document.getElementById('qualityNextPage').onclick = () => { if (qualityPage < totalPages) { qualityPage += 1; renderQuality(); } };
@@ -631,18 +676,21 @@
       save(); renderQuality();
     });
     box.querySelectorAll('[data-edit-quality]').forEach(el => el.onclick = () => openQualityForm(el.dataset.editQuality));
+    box.querySelectorAll('[data-archive-quality]').forEach(el => el.onclick = () => { data.qualityIssues = data.qualityIssues.map(i => i.id===el.dataset.archiveQuality ? { ...i, archived:true, updatedAt:now() } : i); save(); renderQuality(); });
+    box.querySelectorAll('[data-restore-quality]').forEach(el => el.onclick = () => { data.qualityIssues = data.qualityIssues.map(i => i.id===el.dataset.restoreQuality ? { ...i, archived:false, updatedAt:now() } : i); save(); renderQuality(); });
     box.querySelectorAll('[data-del-quality]').forEach(el => el.onclick = () => { if (!confirm('确定删除该质量问题记录吗？')) return; data.qualityIssues = data.qualityIssues.filter(x => x.id !== el.dataset.delQuality); save(); renderAll(); });
   }
 
   function openQualityForm(id='') {
-    const origin = id ? data.qualityIssues.find(i => i.id === id) : { complaintNo:`Q-${new Date().getFullYear()}-${String((data.qualityIssues?.length||0)+1).padStart(3,'0')}`, customerName:'', projectName:'', title:'', description:'', happenDate:'', severity:'中', status:'新建', source:'客户投诉', responsibility:'待确认', isClosed:false, closeDate:'', temporaryAction:'', rootCause:'', improvement:'', owner:'', deadline:'', notes:'', followLogs:[] };
-    const html = `<div class="card" id="qualityFormCard"><h3>${id?'编辑':'新增'}质量问题</h3><div class="form-grid">${field('q_no','质量投诉号',origin.complaintNo,true)}${field('q_customer','客户名称',origin.customerName)}${field('q_project','项目名称',origin.projectName)}${field('q_title','问题标题',origin.title,true)}${field('q_desc','问题描述',origin.description,false,true)}${field('q_date','发生日期',origin.happenDate)}${field('q_severity','严重程度',origin.severity)}<label>问题来源<select id="q_source">${QUALITY_SOURCES.map(s=>`<option ${origin.source===s?'selected':''}>${s}</option>`).join('')}</select></label><label>责任归属<select id="q_resp">${QUALITY_OWNERS.map(s=>`<option ${origin.responsibility===s?'selected':''}>${s}</option>`).join('')}</select></label><label>当前状态<select id="q_status">${QUALITY_STATUS.map(s=>`<option ${origin.status===s?'selected':''}>${s}</option>`).join('')}</select></label><label><input type="checkbox" id="q_closed" ${origin.isClosed?'checked':''}/> 是否已关闭</label>${field('q_close_date','关闭日期',origin.closeDate)}${field('q_temp','临时措施',origin.temporaryAction,false,true)}${field('q_root','根因分析',origin.rootCause,false,true)}${field('q_improve','改善措施',origin.improvement,false,true)}${field('q_owner','责任人',origin.owner)}${field('q_deadline','截止日期',origin.deadline)}${field('q_notes','备注',origin.notes,false,true)}</div><div class="row"><button class="btn primary" id="saveQuality">保存</button><button class="btn" id="cancelQuality">取消</button></div></div>`;
+    const origin = normalizeQuality(id ? data.qualityIssues.find(i => i.id === id) : { complaintNo:`Q-${new Date().getFullYear()}-${String((data.qualityIssues?.length||0)+1).padStart(3,'0')}`, customerName:'', projectName:'', title:'', description:'', happenDate:'', severity:'中', status:'新建', source:'客户投诉', responsibility:'待确认', isClosed:false, closeDate:'', temporaryAction:'', rootCause:'', improvement:'', owner:'', deadline:'', notes:'' });
+    const html = `<div class="card" id="qualityFormCard"><h3>${id?'编辑':'新增'}质量问题</h3><div class="form-grid">${field('q_no','质量投诉号',origin.complaintNo,true)}${field('q_customer','客户名称',origin.customerName)}${field('q_project','项目名称',origin.projectName)}${field('q_title','问题标题',origin.title,true)}${field('q_desc','问题描述',origin.description,false,true)}${field('q_date','发生日期',origin.happenDate)}${field('q_severity','严重程度',origin.severity)}<label>问题来源<select id="q_source">${QUALITY_SOURCES.map(s=>`<option ${origin.source===s?'selected':''}>${s}</option>`).join('')}</select></label><label>责任归属<select id="q_resp">${QUALITY_OWNERS.map(s=>`<option ${origin.responsibility===s?'selected':''}>${s}</option>`).join('')}</select></label><label>当前状态<select id="q_status">${QUALITY_STATUS.map(s=>`<option ${origin.status===s?'selected':''}>${s}</option>`).join('')}</select></label><label><input type="checkbox" id="q_closed" ${origin.isClosed?'checked':''}/> 是否已关闭</label>${field('q_close_date','关闭日期',origin.closeDate)}${field('q_temp','临时措施',origin.temporaryAction,false,true)}${field('q_root','根因分析',origin.rootCause,false,true)}${field('q_improve','改善措施',origin.improvement,false,true)}${field('q_owner','责任人',origin.owner)}${field('q_deadline','截止日期',origin.deadline)}${field('q_notes','备注',origin.notes,false,true)}</div><div id="qualityAttachWrap"></div><div class="row"><button class="btn primary" id="saveQuality">保存</button><button class="btn" id="cancelQuality">取消</button></div></div>`;
     const target = document.getElementById('quality'); target.insertAdjacentHTML('afterbegin', html);
+    bindAttachmentEditor('qualityAttachWrap', origin.attachments || [], 'q');
     document.getElementById('saveQuality').onclick = () => {
-      const payload = { complaintNo:val('q_no').trim(), customerName:val('q_customer').trim(), projectName:val('q_project').trim(), title:val('q_title').trim(), description:val('q_desc').trim(), happenDate:val('q_date').trim(), severity:val('q_severity').trim(), source:val('q_source'), responsibility:val('q_resp'), status:val('q_status'), isClosed:document.getElementById('q_closed').checked, closeDate:val('q_close_date').trim(), temporaryAction:val('q_temp').trim(), rootCause:val('q_root').trim(), improvement:val('q_improve').trim(), owner:val('q_owner').trim(), deadline:val('q_deadline').trim(), notes:val('q_notes').trim() };
+      const payload = normalizeQuality({ complaintNo:val('q_no').trim(), customerName:val('q_customer').trim(), projectName:val('q_project').trim(), title:val('q_title').trim(), description:val('q_desc').trim(), happenDate:val('q_date').trim(), severity:val('q_severity').trim(), source:val('q_source'), responsibility:val('q_resp'), status:val('q_status'), isClosed:document.getElementById('q_closed').checked, closeDate:val('q_close_date').trim(), temporaryAction:val('q_temp').trim(), rootCause:val('q_root').trim(), improvement:val('q_improve').trim(), owner:val('q_owner').trim(), deadline:val('q_deadline').trim(), notes:val('q_notes').trim(), attachments: collectAttachments('q') });
       if (!payload.title) return alert('问题标题不能为空');
       if (id) data.qualityIssues = data.qualityIssues.map(x => x.id===id ? { ...x, ...payload, updatedAt: now() } : x);
-      else data.qualityIssues.unshift({ id:uid(), ...payload, createdAt:now(), updatedAt:now() });
+      else data.qualityIssues.unshift(normalizeQuality({ id:uid(), ...payload, createdAt:now(), updatedAt:now() }));
       save(); renderAll();
     };
     document.getElementById('cancelQuality').onclick = () => document.getElementById('qualityFormCard').remove();
@@ -650,13 +698,39 @@
 
   function renderShipments() {
     const box = document.getElementById('shipments');
-    const list = data.shipments.filter(s => {
+    const customerOptions = ['<option>全部</option>', ...[...new Set(data.shipments.map(s => s.customerName).filter(Boolean))].map(n => `<option ${shipmentCustomerFilter===n?'selected':''}>${escapeHtml(n)}</option>`)].join('');
+    const filtered = data.shipments.filter(raw => {
+      const s = normalizeShipment(raw);
       const q = shipmentKeyword.trim().toLowerCase();
-      return !q || [s.customerName, s.projectName, s.model, s.trackingNo, s.receiver, s.status].some(v => (v||'').toLowerCase().includes(q));
+      const passQ = !q || [s.customerName, s.projectName, s.model, s.trackingNo].some(v => (v||'').toLowerCase().includes(q));
+      const passC = shipmentCustomerFilter === '全部' || s.customerName === shipmentCustomerFilter;
+      const passS = shipmentStatusFilter === '全部' || s.status === shipmentStatusFilter;
+      const passF = shipmentFeedbackFilter === '全部' || (shipmentFeedbackFilter === '已反馈' ? !!s.receivedFeedback : !s.receivedFeedback);
+      const passA = shipmentArchiveFilter === '全部' ? true : (shipmentArchiveFilter === '已归档' ? !!s.archived : !s.archived);
+      const passView = showShipmentArchived ? !!s.archived : true;
+      return passQ && passC && passS && passF && passA && passView;
+    }).sort((a,b) => {
+      if (shipmentSort === '发货日期(近->远)') return (a.shipDate || '9999-12-31').localeCompare(b.shipDate || '9999-12-31');
+      if (shipmentSort === '创建时间(新->旧)') return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
     });
-    box.innerHTML = `<div class="card"><div class="row"><input id="shipmentSearch" class="grow" placeholder="搜索发货记录" value="${escapeHtml(shipmentKeyword)}" /><button class="btn primary" id="newShipmentBtn">新增发货记录</button></div></div>
-    <div class="card"><table><thead><tr><th>客户</th><th>项目</th><th>型号</th><th>数量</th><th>发货日期</th><th>状态</th><th>是否收到反馈</th><th>操作</th></tr></thead><tbody>${list.length ? list.map(s => `<tr><td>${escapeHtml(s.customerName||'-')}</td><td>${escapeHtml(s.projectName||'-')}</td><td>${escapeHtml(s.model||'-')}</td><td>${escapeHtml(s.qty||'-')}</td><td>${escapeHtml(s.shipDate||'-')}</td><td>${escapeHtml(s.status||'-')}</td><td>${s.receivedFeedback?'是':'否'}</td><td><button class="btn small" data-addlog-shipment="${s.id}">+跟进</button><button class="btn small" data-edit-shipment="${s.id}">编辑</button><button class="btn small danger" data-del-shipment="${s.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="8" class="empty">暂无样机发货记录</td></tr>'}</tbody></table></div>`;
-    document.getElementById('shipmentSearch').oninput = e => { shipmentKeyword = e.target.value; renderShipments(); };
+    const total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / shipmentPageSize));
+    if (shipmentPage > totalPages) shipmentPage = totalPages;
+    const list = filtered.slice((shipmentPage - 1) * shipmentPageSize, shipmentPage * shipmentPageSize);
+    box.innerHTML = `<div class="card"><div class="row"><input id="shipmentSearch" class="grow" placeholder="搜索：客户/项目/型号/快递单号" value="${escapeHtml(shipmentKeyword)}" /><select id="shipmentCustomerSel" style="max-width:150px">${customerOptions}</select><select id="shipmentStatusSel" style="max-width:130px">${['全部',...SHIPMENT_STATUS].map(s=>`<option ${shipmentStatusFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="shipmentFeedbackSel" style="max-width:120px">${['全部','已反馈','未反馈'].map(s=>`<option ${shipmentFeedbackFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="shipmentArchiveSel" style="max-width:120px">${['未归档','已归档','全部'].map(s=>`<option ${shipmentArchiveFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="shipmentSortSel" style="max-width:150px">${['更新时间(新->旧)','发货日期(近->远)','创建时间(新->旧)'].map(s=>`<option ${shipmentSort===s?'selected':''}>${s}</option>`).join('')}</select><button class="btn" id="shipmentArchiveToggle">${showShipmentArchived?'返回未归档':'查看归档发货记录'}</button><button class="btn primary" id="newShipmentBtn">新增发货记录</button></div></div>
+    <div class="card"><table><thead><tr><th>客户</th><th>项目</th><th>型号</th><th>数量</th><th>发货日期</th><th>状态</th><th>是否收到反馈</th><th>操作</th></tr></thead><tbody>${list.length ? list.map(s => `<tr><td>${escapeHtml(s.customerName||'-')}</td><td>${escapeHtml(s.projectName||'-')}</td><td>${escapeHtml(s.model||'-')}</td><td>${escapeHtml(s.qty||'-')}</td><td>${escapeHtml(s.shipDate||'-')}</td><td>${escapeHtml(s.status||'-')}</td><td>${s.receivedFeedback?'是':'否'}</td><td><button class="btn small" data-addlog-shipment="${s.id}">+跟进</button>${s.archived?`<button class="btn small" data-restore-shipment="${s.id}">恢复</button>`:`${['测试完成','已完成'].includes(s.status)?`<button class="btn small" data-archive-shipment="${s.id}">归档</button>`:''}`}<button class="btn small" data-edit-shipment="${s.id}">编辑</button><button class="btn small danger" data-del-shipment="${s.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="8" class="empty">暂无样机发货记录</td></tr>'}</tbody></table></div>
+    <div class="card"><div class="row"><span class="muted">总发货记录：${total}</span><label style="margin:0;">每页<select id="shipmentPageSizeSel" style="width:90px; margin-left:6px;">${[10,20,50,100].map(n => `<option value="${n}" ${shipmentPageSize===n?'selected':''}>${n}</option>`).join('')}</select></label><button class="btn small" id="shipmentPrevPage" ${shipmentPage<=1?'disabled':''}>上一页</button><span class="muted">第 ${shipmentPage} / ${totalPages} 页</span><button class="btn small" id="shipmentNextPage" ${shipmentPage>=totalPages?'disabled':''}>下一页</button></div></div>`;
+    document.getElementById('shipmentSearch').oninput = e => { shipmentKeyword = e.target.value; shipmentPage=1; renderShipments(); };
+    document.getElementById('shipmentCustomerSel').onchange = e => { shipmentCustomerFilter = e.target.value; shipmentPage=1; renderShipments(); };
+    document.getElementById('shipmentStatusSel').onchange = e => { shipmentStatusFilter = e.target.value; shipmentPage=1; renderShipments(); };
+    document.getElementById('shipmentFeedbackSel').onchange = e => { shipmentFeedbackFilter = e.target.value; shipmentPage=1; renderShipments(); };
+    document.getElementById('shipmentArchiveSel').onchange = e => { shipmentArchiveFilter = e.target.value; shipmentPage=1; renderShipments(); };
+    document.getElementById('shipmentSortSel').onchange = e => { shipmentSort = e.target.value; shipmentPage=1; renderShipments(); };
+    document.getElementById('shipmentArchiveToggle').onclick = () => { showShipmentArchived = !showShipmentArchived; shipmentArchiveFilter = showShipmentArchived ? '已归档' : '未归档'; shipmentPage=1; renderShipments(); };
+    document.getElementById('shipmentPageSizeSel').onchange = e => { shipmentPageSize = Number(e.target.value)||20; shipmentPage=1; renderShipments(); };
+    document.getElementById('shipmentPrevPage').onclick = () => { if (shipmentPage > 1) { shipmentPage -= 1; renderShipments(); } };
+    document.getElementById('shipmentNextPage').onclick = () => { if (shipmentPage < totalPages) { shipmentPage += 1; renderShipments(); } };
     document.getElementById('newShipmentBtn').onclick = () => openShipmentForm();
     box.querySelectorAll('[data-addlog-shipment]').forEach(el => el.onclick = () => {
       const note = prompt('输入样机发货简短跟进记录：');
@@ -664,16 +738,19 @@
       data.shipments = data.shipments.map(s => s.id===el.dataset.addlogShipment ? appendSimpleLog(s, note) : s);
       save(); renderShipments();
     });
+    box.querySelectorAll('[data-archive-shipment]').forEach(el => el.onclick = () => { data.shipments = data.shipments.map(s => s.id===el.dataset.archiveShipment ? { ...s, archived:true, updatedAt:now() } : s); save(); renderShipments(); });
+    box.querySelectorAll('[data-restore-shipment]').forEach(el => el.onclick = () => { data.shipments = data.shipments.map(s => s.id===el.dataset.restoreShipment ? { ...s, archived:false, updatedAt:now() } : s); save(); renderShipments(); });
     box.querySelectorAll('[data-edit-shipment]').forEach(el => el.onclick = () => openShipmentForm(el.dataset.editShipment));
     box.querySelectorAll('[data-del-shipment]').forEach(el => el.onclick = () => { if (!confirm('确定删除该发货记录吗？')) return; data.shipments = data.shipments.filter(x => x.id !== el.dataset.delShipment); save(); renderAll(); });
   }
 
   function openShipmentForm(id='') {
-    const origin = id ? data.shipments.find(s => s.id === id) : { customerName:'', projectName:'', model:'', qty:'', shipDate:'', trackingNo:'', receiver:'', address:'', status:'待发货', receivedFeedback:false, feedback:'', notes:'', followLogs:[] };
-    const html = `<div class="card" id="shipmentFormCard"><h3>${id?'编辑':'新增'}样机发货记录</h3><div class="form-grid">${field('s_customer','客户名称',origin.customerName)}${field('s_project','项目名称',origin.projectName)}${field('s_model','样机型号',origin.model,true)}${field('s_qty','数量',origin.qty)}${field('s_ship_date','发货日期',origin.shipDate)}${field('s_tracking','快递单号',origin.trackingNo)}${field('s_receiver','收件人',origin.receiver)}${field('s_address','收货地址',origin.address,false,true)}<label>当前状态<select id="s_status">${SHIPMENT_STATUS.map(s=>`<option ${origin.status===s?'selected':''}>${s}</option>`).join('')}</select></label><label><input type="checkbox" id="s_feedback_received" ${origin.receivedFeedback?'checked':''}/> 是否收到反馈</label>${field('s_feedback','反馈情况',origin.feedback,false,true)}${field('s_notes','备注',origin.notes,false,true)}</div><div class="row"><button class="btn primary" id="saveShipment">保存</button><button class="btn" id="cancelShipment">取消</button></div></div>`;
+    const origin = normalizeShipment(id ? data.shipments.find(s => s.id === id) : { customerName:'', projectName:'', model:'', qty:'', shipDate:'', trackingNo:'', receiver:'', address:'', status:'待发货', receivedFeedback:false, feedback:'', notes:'' });
+    const html = `<div class="card" id="shipmentFormCard"><h3>${id?'编辑':'新增'}样机发货记录</h3><div class="form-grid">${field('s_customer','客户名称',origin.customerName)}${field('s_project','项目名称',origin.projectName)}${field('s_model','样机型号',origin.model,true)}${field('s_qty','数量',origin.qty)}${field('s_ship_date','发货日期',origin.shipDate)}${field('s_tracking','快递单号',origin.trackingNo)}${field('s_receiver','收件人',origin.receiver)}${field('s_address','收货地址',origin.address,false,true)}<label>当前状态<select id="s_status">${SHIPMENT_STATUS.map(s=>`<option ${origin.status===s?'selected':''}>${s}</option>`).join('')}</select></label><label><input type="checkbox" id="s_feedback_received" ${origin.receivedFeedback?'checked':''}/> 是否收到反馈</label>${field('s_feedback','反馈情况',origin.feedback,false,true)}${field('s_notes','备注',origin.notes,false,true)}</div><div id="shipmentAttachWrap"></div><div class="row"><button class="btn primary" id="saveShipment">保存</button><button class="btn" id="cancelShipment">取消</button></div></div>`;
     const target = document.getElementById('shipments'); target.insertAdjacentHTML('afterbegin', html);
+    bindAttachmentEditor('shipmentAttachWrap', origin.attachments || [], 's');
     document.getElementById('saveShipment').onclick = () => {
-      const payload = { customerName:val('s_customer').trim(), projectName:val('s_project').trim(), model:val('s_model').trim(), qty:val('s_qty').trim(), shipDate:val('s_ship_date').trim(), trackingNo:val('s_tracking').trim(), receiver:val('s_receiver').trim(), address:val('s_address').trim(), status:val('s_status'), receivedFeedback:document.getElementById('s_feedback_received').checked, feedback:val('s_feedback').trim(), notes:val('s_notes').trim() };
+      const payload = normalizeShipment({ customerName:val('s_customer').trim(), projectName:val('s_project').trim(), model:val('s_model').trim(), qty:val('s_qty').trim(), shipDate:val('s_ship_date').trim(), trackingNo:val('s_tracking').trim(), receiver:val('s_receiver').trim(), address:val('s_address').trim(), status:val('s_status'), receivedFeedback:document.getElementById('s_feedback_received').checked, feedback:val('s_feedback').trim(), notes:val('s_notes').trim(), attachments: collectAttachments('s') });
       if (!payload.model) return alert('样机型号不能为空');
       if (id) data.shipments = data.shipments.map(x => x.id===id ? { ...x, ...payload, updatedAt: now() } : x);
       else data.shipments.unshift({ id: uid(), ...payload, createdAt: now(), updatedAt: now() });
@@ -685,6 +762,33 @@
   function field(id, label, value='', required=false, textarea=false) {
     const safe = escapeHtml(value || '');
     return `<label>${label}${textarea ? `<textarea id="${id}" ${required?'required':''}>${safe}</textarea>` : `<input id="${id}" value="${safe}" ${required?'required':''} />`}</label>`;
+  }
+  function bindAttachmentEditor(containerId, attachments, prefix) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const rows = Array.isArray(attachments) ? attachments : [];
+    const render = () => {
+      container.innerHTML = `<div class="card"><b>附件信息（名称/路径或链接/备注）</b><table><thead><tr><th>附件名称</th><th>路径或链接</th><th>备注</th><th>操作</th></tr></thead><tbody>${rows.length ? rows.map((a, idx) => `<tr><td><input data-att-name="${idx}" value="${escapeHtml(a.name||'')}" /></td><td><input data-att-path="${idx}" value="${escapeHtml(a.path||'')}" /></td><td><input data-att-note="${idx}" value="${escapeHtml(a.note||'')}" /></td><td><button type="button" class="btn small danger" data-del-att="${idx}">删除</button></td></tr>`).join('') : '<tr><td colspan="4" class="empty">暂无附件</td></tr>'}</tbody></table><button type="button" class="btn small" id="${prefix}_add_att">新增附件</button></div>`;
+      container.querySelectorAll('[data-del-att]').forEach(btn => btn.onclick = () => { rows.splice(Number(btn.dataset.delAtt), 1); render(); });
+      const addBtn = document.getElementById(`${prefix}_add_att`);
+      if (addBtn) addBtn.onclick = () => { rows.push({ name:'', path:'', note:'' }); render(); };
+    };
+    render();
+  }
+  function collectAttachments(prefix) {
+    const names = [...document.querySelectorAll(`[data-att-name]`)];
+    const paths = [...document.querySelectorAll(`[data-att-path]`)];
+    const notes = [...document.querySelectorAll(`[data-att-note]`)];
+    const len = Math.max(names.length, paths.length, notes.length);
+    const out = [];
+    for (let i=0;i<len;i++) {
+      const name = names[i]?.value?.trim() || '';
+      const path = paths[i]?.value?.trim() || '';
+      const note = notes[i]?.value?.trim() || '';
+      if (!name && !path && !note) continue;
+      out.push({ name, path, note });
+    }
+    return out;
   }
   function val(id) { return document.getElementById(id).value; }
   function escapeHtml(str) { return String(str).replace(/[&<>'"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[c])); }
