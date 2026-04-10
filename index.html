@@ -82,8 +82,11 @@
   const STAGES = ['新机会','评估中','打样中','测试中','小批量','量产','暂停','关闭'];
   const PROJECT_WORK_STATUS = ['进行中','待跟进','已完成','已暂停','已归档'];
   const PROJECT_PRIORITY = ['高','中','低'];
+  const CUSTOMER_STATUS = ['潜在客户','跟进中','正常合作','暂停','停止合作'];
   const QUALITY_STATUS = ['新建','分析中','待客户回复','待工厂回复','改善中','已关闭'];
-  const SHIPMENT_STATUS = ['待发货','已发货','已签收','测试中','测试完成'];
+  const QUALITY_SOURCES = ['客户投诉','内部发现','工厂反馈','样机测试','展会反馈'];
+  const QUALITY_OWNERS = ['客户端','我司工厂','供应商','待确认'];
+  const SHIPMENT_STATUS = ['待发货','已发货','已签收','测试中','已完成'];
   const stageColor = { 新机会:'#3b82f6',评估中:'#06b6d4',打样中:'#f59e0b',测试中:'#8b5cf6',小批量:'#6366f1',量产:'#16a34a',暂停:'#6b7280',关闭:'#dc2626' };
   const KEY = 'crm_single_file_v1';
   const now = () => new Date().toISOString();
@@ -94,6 +97,8 @@
   let data = load();
   let customerKeyword = '';
   let customerSort = '更新时间(新->旧)';
+  let customerPage = 1;
+  let customerPageSize = 20;
   let projectKeyword = '';
   let projectStage = '全部';
   let projectCustomerFilter = '全部';
@@ -106,6 +111,8 @@
   let activeCustomerId = '';
   let activeProjectId = '';
   let qualityKeyword = '';
+  let qualityPage = 1;
+  let qualityPageSize = 20;
   let shipmentKeyword = '';
 
   function load() {
@@ -123,7 +130,7 @@
   }
   function save() { localStorage.setItem(KEY, JSON.stringify(data)); }
   function normalizeProject(p) {
-    return { workStatus:'进行中', priority:'中', completeDate:'', nextFollowDate:'', followItem:'', followDone:false, needFollowUp:false, followUps:[], ...p };
+    return { projectCode:'', workStatus:'进行中', priority:'中', completeDate:'', nextFollowDate:'', followItem:'', followDone:false, needFollowUp:false, followUps:[], ...p };
   }
 
   function setTab(tab) {
@@ -174,20 +181,21 @@
     if (!window.XLSX) return alert('Excel导出库加载失败，请联网后重试');
     const wb = XLSX.utils.book_new();
     const customersRows = data.customers.map(c => ({
-      id:c.id||'', 客户名称:c.name||'', 国家:c.country||'', 联系人:c.contact||'', 邮箱:c.email||'', 电话:c.phone||'', 行业:c.industry||'',
+      id:c.id||'', 客户注册号:c.regNo||'', 客户简称:c.shortName||'', 客户名称:c.name||'', 国家:c.country||'', 区域:c.region||'', 客户状态:c.status||'',
+      联系人:c.contact||'', 邮箱:c.email||'', 电话:c.phone||'', 行业:c.industry||'',
       主要应用:c.application||'', 常用产品型号:c.products||'', 特殊要求:c.requirements||'', 备注:c.notes||'', 下次跟进日期:c.nextFollowDate||'',
       跟进事项:c.followItem||'', 跟进完成:c.followDone?'是':'否', 创建时间:c.createdAt||'', 更新时间:c.updatedAt||''
     }));
     const projectRows = data.projects.map(p => ({
-      id:p.id||'', 项目名称:p.name||'', 客户ID:p.customerId||'', 客户名称:customerName(p.customerId), 产品型号:p.model||'', 应用描述:p.applicationDesc||'', 当前阶段:p.stage||'',
+      id:p.id||'', 项目编号:p.projectCode||'', 项目名称:p.name||'', 客户ID:p.customerId||'', 客户名称:customerName(p.customerId), 产品型号:p.model||'', 应用描述:p.applicationDesc||'', 当前阶段:p.stage||'',
       项目状态:p.workStatus||'进行中', 优先级:p.priority||'中', 样品状态:p.sampleStatus||'', 图纸版本:p.drawingVersion||'', 测试状态:p.testStatus||'',
       交期状态:p.deliveryStatus||'', 开始时间:p.startTime||'', 完成时间:p.endTime||'', 完成日期:p.completeDate||'', 风险点:p.risks||'', 下一步动作:p.nextAction||'',
       负责人:p.owner||'', 备注:p.notes||'', 下次跟进日期:p.nextFollowDate||'', 跟进事项:p.followItem||'', 跟进完成:p.followDone?'是':'否',
       手动需要跟进:p.needFollowUp?'是':'否', 创建时间:p.createdAt||'', 更新时间:p.updatedAt||''
     }));
     const followRows = data.projects.flatMap(p => (p.followUps||[]).map(f => ({ id:f.id||'', 项目ID:p.id||'', 项目名称:p.name||'', 客户名称:customerName(p.customerId), 日期:f.date||'', 内容:f.content||'', 创建时间:f.createdAt||'' })));
-    const qualityRows = data.qualityIssues.map(q => ({ id:q.id||'', 客户名称:q.customerName||'', 项目名称:q.projectName||'', 问题标题:q.title||'', 问题描述:q.description||'', 发生日期:q.happenDate||'', 严重程度:q.severity||'', 当前状态:q.status||'', 临时措施:q.temporaryAction||'', 根因分析:q.rootCause||'', 改善措施:q.improvement||'', 责任人:q.owner||'', 截止日期:q.deadline||'', 备注:q.notes||'', 创建时间:q.createdAt||'', 更新时间:q.updatedAt||'' }));
-    const shipmentRows = data.shipments.map(s => ({ id:s.id||'', 客户名称:s.customerName||'', 项目名称:s.projectName||'', 样机型号:s.model||'', 数量:s.qty||'', 发货日期:s.shipDate||'', 快递单号:s.trackingNo||'', 收件人:s.receiver||'', 收货地址:s.address||'', 当前状态:s.status||'', 反馈情况:s.feedback||'', 备注:s.notes||'', 创建时间:s.createdAt||'', 更新时间:s.updatedAt||'' }));
+    const qualityRows = data.qualityIssues.map(q => ({ id:q.id||'', 质量投诉号:q.complaintNo||'', 客户名称:q.customerName||'', 项目名称:q.projectName||'', 问题标题:q.title||'', 问题描述:q.description||'', 发生日期:q.happenDate||'', 严重程度:q.severity||'', 问题来源:q.source||'', 责任归属:q.responsibility||'', 当前状态:q.status||'', 是否已关闭:q.isClosed?'是':'否', 关闭日期:q.closeDate||'', 临时措施:q.temporaryAction||'', 根因分析:q.rootCause||'', 改善措施:q.improvement||'', 责任人:q.owner||'', 截止日期:q.deadline||'', 备注:q.notes||'', 创建时间:q.createdAt||'', 更新时间:q.updatedAt||'' }));
+    const shipmentRows = data.shipments.map(s => ({ id:s.id||'', 客户名称:s.customerName||'', 项目名称:s.projectName||'', 样机型号:s.model||'', 数量:s.qty||'', 发货日期:s.shipDate||'', 快递单号:s.trackingNo||'', 收件人:s.receiver||'', 收货地址:s.address||'', 当前状态:s.status||'', 是否收到反馈:s.receivedFeedback?'是':'否', 反馈情况:s.feedback||'', 备注:s.notes||'', 创建时间:s.createdAt||'', 更新时间:s.updatedAt||'' }));
 
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(customersRows), '客户');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(projectRows), '项目');
@@ -207,7 +215,7 @@
 
     XLSX.utils.sheet_to_json(workbook.Sheets['客户'], { defval:'' }).forEach(r => {
       const payload = {
-        id:String(r.id||'').trim()||uid(), name:String(r['客户名称']||'').trim(), country:String(r['国家']||'').trim(), contact:String(r['联系人']||'').trim(), email:String(r['邮箱']||'').trim(),
+        id:String(r.id||'').trim()||uid(), regNo:String(r['客户注册号']||'').trim(), shortName:String(r['客户简称']||'').trim(), name:String(r['客户名称']||'').trim(), country:String(r['国家']||'').trim(), region:String(r['区域']||'').trim(), status:String(r['客户状态']||'').trim()||'潜在客户', contact:String(r['联系人']||'').trim(), email:String(r['邮箱']||'').trim(),
         phone:String(r['电话']||'').trim(), industry:String(r['行业']||'').trim(), application:String(r['主要应用']||'').trim(), products:String(r['常用产品型号']||'').trim(), requirements:String(r['特殊要求']||'').trim(),
         notes:String(r['备注']||'').trim(), nextFollowDate:normalizeDate(r['下次跟进日期']), followItem:String(r['跟进事项']||'').trim(), followDone:normalizeBool(r['跟进完成']), createdAt:String(r['创建时间']||'').trim()||now(), updatedAt:now()
       };
@@ -223,7 +231,7 @@
         customerId = c.id;
       }
       const payload = normalizeProject({
-        id:String(r.id||'').trim()||uid(), name:String(r['项目名称']||'').trim(), customerId,
+        id:String(r.id||'').trim()||uid(), projectCode:String(r['项目编号']||'').trim(), name:String(r['项目名称']||'').trim(), customerId,
         model:String(r['产品型号']||'').trim(), applicationDesc:String(r['应用描述']||'').trim(), stage:String(r['当前阶段']||'').trim()||'新机会',
         workStatus:normalizeProjectWorkStatus(r['项目状态']||r['当前状态']), priority:normalizePriority(r['优先级']), sampleStatus:String(r['样品状态']||'').trim(), drawingVersion:String(r['图纸版本']||'').trim(), testStatus:String(r['测试状态']||'').trim(),
         deliveryStatus:String(r['交期状态']||'').trim(), startTime:normalizeDate(r['开始时间']), endTime:normalizeDate(r['完成时间']), completeDate:normalizeDate(r['完成日期']),
@@ -243,12 +251,12 @@
     data.projects = data.projects.map(p => ({ ...p, followUps: followMap[p.id] || p.followUps || [], updatedAt: now() }));
 
     XLSX.utils.sheet_to_json(workbook.Sheets['质量问题'], { defval:'' }).forEach(r => {
-      const payload = { id:String(r.id||'').trim()||uid(), customerName:String(r['客户名称']||'').trim(), projectName:String(r['项目名称']||'').trim(), title:String(r['问题标题']||'').trim(), description:String(r['问题描述']||'').trim(), happenDate:normalizeDate(r['发生日期']), severity:String(r['严重程度']||'').trim(), status:String(r['当前状态']||'').trim()||'新建', temporaryAction:String(r['临时措施']||'').trim(), rootCause:String(r['根因分析']||'').trim(), improvement:String(r['改善措施']||'').trim(), owner:String(r['责任人']||'').trim(), deadline:normalizeDate(r['截止日期']), notes:String(r['备注']||'').trim(), createdAt:String(r['创建时间']||'').trim()||now(), updatedAt:now() };
+      const payload = { id:String(r.id||'').trim()||uid(), complaintNo:String(r['质量投诉号']||'').trim(), customerName:String(r['客户名称']||'').trim(), projectName:String(r['项目名称']||'').trim(), title:String(r['问题标题']||'').trim(), description:String(r['问题描述']||'').trim(), happenDate:normalizeDate(r['发生日期']), severity:String(r['严重程度']||'').trim(), source:String(r['问题来源']||'').trim(), responsibility:String(r['责任归属']||'').trim(), status:String(r['当前状态']||'').trim()||'新建', isClosed:normalizeBool(r['是否已关闭']), closeDate:normalizeDate(r['关闭日期']), temporaryAction:String(r['临时措施']||'').trim(), rootCause:String(r['根因分析']||'').trim(), improvement:String(r['改善措施']||'').trim(), owner:String(r['责任人']||'').trim(), deadline:normalizeDate(r['截止日期']), notes:String(r['备注']||'').trim(), createdAt:String(r['创建时间']||'').trim()||now(), updatedAt:now() };
       if (!payload.title) return; upsertById(data.qualityIssues, payload);
     });
 
     XLSX.utils.sheet_to_json(workbook.Sheets['样机发货'], { defval:'' }).forEach(r => {
-      const payload = { id:String(r.id||'').trim()||uid(), customerName:String(r['客户名称']||'').trim(), projectName:String(r['项目名称']||'').trim(), model:String(r['样机型号']||'').trim(), qty:String(r['数量']||'').trim(), shipDate:normalizeDate(r['发货日期']), trackingNo:String(r['快递单号']||'').trim(), receiver:String(r['收件人']||'').trim(), address:String(r['收货地址']||'').trim(), status:String(r['当前状态']||'').trim()||'待发货', feedback:String(r['反馈情况']||'').trim(), notes:String(r['备注']||'').trim(), createdAt:String(r['创建时间']||'').trim()||now(), updatedAt:now() };
+      const payload = { id:String(r.id||'').trim()||uid(), customerName:String(r['客户名称']||'').trim(), projectName:String(r['项目名称']||'').trim(), model:String(r['样机型号']||'').trim(), qty:String(r['数量']||'').trim(), shipDate:normalizeDate(r['发货日期']), trackingNo:String(r['快递单号']||'').trim(), receiver:String(r['收件人']||'').trim(), address:String(r['收货地址']||'').trim(), status:String(r['当前状态']||'').trim()||'待发货', receivedFeedback:normalizeBool(r['是否收到反馈']), feedback:String(r['反馈情况']||'').trim(), notes:String(r['备注']||'').trim(), createdAt:String(r['创建时间']||'').trim()||now(), updatedAt:now() };
       if (!payload.model) return; upsertById(data.shipments, payload);
     });
   }
@@ -278,6 +286,19 @@
     const ra = urgencyRankByDate(a.nextFollowDate), rb = urgencyRankByDate(b.nextFollowDate);
     if (ra !== rb) return ra - rb;
     return new Date(b.updatedAt) - new Date(a.updatedAt);
+  }
+  function nextProjectCode() {
+    const year = new Date().getFullYear();
+    const prefix = `PRJ-${year}-`;
+    const nums = data.projects.map(p => String(p.projectCode || '')).filter(x => x.startsWith(prefix)).map(x => Number(x.slice(prefix.length))).filter(n => !Number.isNaN(n));
+    const next = (nums.length ? Math.max(...nums) : 0) + 1;
+    return `${prefix}${String(next).padStart(3, '0')}`;
+  }
+  function appendSimpleLog(target, text) {
+    if (!text.trim()) return target;
+    const line = `${new Date().toISOString().slice(0,10)} ${text.trim()}`;
+    const logs = Array.isArray(target.followLogs) ? target.followLogs : [];
+    return { ...target, followLogs:[line, ...logs].slice(0, 50), updatedAt: now() };
   }
 
   function importExcelRows(rows) {
@@ -346,22 +367,36 @@
 
   function renderCustomers() {
     const box = document.getElementById('customers');
-    const list = data.customers.filter(c => {
+    const filtered = data.customers.filter(c => {
       const q = customerKeyword.trim().toLowerCase();
-      return !q || [c.name,c.country,c.contact,c.industry].some(v => (v||'').toLowerCase().includes(q));
+      return !q || [c.name,c.shortName,c.country,c.region,c.contact,c.industry,c.status].some(v => (v||'').toLowerCase().includes(q));
     }).sort((a,b) => {
       if (customerSort === '名称') return (a.name || '').localeCompare(b.name || '', 'zh');
       if (customerSort === '创建时间(新->旧)') return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
       return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
     });
+    const total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / customerPageSize));
+    if (customerPage > totalPages) customerPage = totalPages;
+    const list = filtered.slice((customerPage - 1) * customerPageSize, customerPage * customerPageSize);
     box.innerHTML = `
       <div class="card"><div class="row"><input class="grow" id="customerSearch" placeholder="搜索客户" value="${escapeHtml(customerKeyword)}" /><select id="customerSortSel" style="max-width:180px">${['名称','创建时间(新->旧)','更新时间(新->旧)'].map(s=>`<option ${customerSort===s?'selected':''}>${s}</option>`).join('')}</select><button class="btn primary" id="newCustomerBtn">新增客户</button></div></div>
-      <div class="card"><table><thead><tr><th>名称</th><th>国家</th><th>联系人</th><th>行业</th><th>更新时间</th><th>操作</th></tr></thead><tbody>
-      ${list.length ? list.map(c => `<tr><td>${escapeHtml(c.name)}</td><td>${escapeHtml(c.country||'-')}</td><td>${escapeHtml(c.contact||'-')}</td><td>${escapeHtml(c.industry||'-')}</td><td>${fmt(c.updatedAt)}</td><td><button class="btn small" data-edit-customer="${c.id}">编辑</button><button class="btn small danger" data-del-customer="${c.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">暂无客户</td></tr>'}
-      </tbody></table></div>`;
-    document.getElementById('customerSearch').oninput = e => { customerKeyword = e.target.value; renderCustomers(); };
-    document.getElementById('customerSortSel').onchange = e => { customerSort = e.target.value; renderCustomers(); };
+      <div class="card"><table><thead><tr><th>客户</th><th>国家/区域</th><th>状态</th><th>联系人</th><th>更新时间</th><th>操作</th></tr></thead><tbody>
+      ${list.length ? list.map(c => `<tr><td>${escapeHtml(c.name)}<div class="subline">${escapeHtml(c.shortName||'')}</div></td><td>${escapeHtml((c.country||'-') + (c.region?(' / '+c.region):''))}</td><td>${escapeHtml(c.status||'-')}</td><td>${escapeHtml(c.contact||'-')}</td><td>${fmt(c.updatedAt)}</td><td><button class="btn small" data-addlog-customer="${c.id}">+跟进</button><button class="btn small" data-edit-customer="${c.id}">编辑</button><button class="btn small danger" data-del-customer="${c.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">暂无客户</td></tr>'}
+      </tbody></table></div>
+      <div class="card"><div class="row"><span class="muted">总客户：${total}</span><label style="margin:0;">每页<select id="customerPageSizeSel" style="width:90px; margin-left:6px;">${[10,20,50,100].map(n => `<option value="${n}" ${customerPageSize===n?'selected':''}>${n}</option>`).join('')}</select></label><button class="btn small" id="customerPrevPage" ${customerPage<=1?'disabled':''}>上一页</button><span class="muted">第 ${customerPage} / ${totalPages} 页</span><button class="btn small" id="customerNextPage" ${customerPage>=totalPages?'disabled':''}>下一页</button></div></div>`;
+    document.getElementById('customerSearch').oninput = e => { customerKeyword = e.target.value; customerPage = 1; renderCustomers(); };
+    document.getElementById('customerSortSel').onchange = e => { customerSort = e.target.value; customerPage = 1; renderCustomers(); };
+    document.getElementById('customerPageSizeSel').onchange = e => { customerPageSize = Number(e.target.value)||20; customerPage = 1; renderCustomers(); };
+    document.getElementById('customerPrevPage').onclick = () => { if (customerPage > 1) { customerPage -= 1; renderCustomers(); } };
+    document.getElementById('customerNextPage').onclick = () => { if (customerPage < totalPages) { customerPage += 1; renderCustomers(); } };
     document.getElementById('newCustomerBtn').onclick = () => openCustomerForm();
+    box.querySelectorAll('[data-addlog-customer]').forEach(el => el.onclick = () => {
+      const note = prompt('输入简短跟进记录：');
+      if (!note) return;
+      data.customers = data.customers.map(c => c.id===el.dataset.addlogCustomer ? appendSimpleLog(c, note) : c);
+      save(); renderCustomers();
+    });
     box.querySelectorAll('[data-edit-customer]').forEach(el => el.onclick = () => openCustomerForm(el.dataset.editCustomer));
     box.querySelectorAll('[data-del-customer]').forEach(el => el.onclick = () => {
       if (!confirm('删除客户会同时删除其项目，确定吗？')) return;
@@ -373,10 +408,10 @@
   }
 
   function openCustomerForm(id='') {
-    const origin = id ? data.customers.find(c => c.id === id) : { name:'',country:'',contact:'',email:'',phone:'',industry:'',application:'',products:'',requirements:'',notes:'',nextFollowDate:'',followItem:'',followDone:false };
+    const origin = id ? data.customers.find(c => c.id === id) : { regNo:'',shortName:'',name:'',country:'',region:'',status:'潜在客户',contact:'',email:'',phone:'',industry:'',application:'',products:'',requirements:'',notes:'',nextFollowDate:'',followItem:'',followDone:false,followLogs:[] };
     const templateOptions = ['<option value="">复制已有客户资料（可选）</option>', ...data.customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`)].join('');
     const html = `<div class="card" id="customerFormCard"><h3>${id?'编辑':'新增'}客户</h3><div class="row"><select id="customerTemplateSel" style="max-width:280px">${templateOptions}</select><button class="btn" id="applyCustomerTemplate">套用模板</button></div><div class="form-grid">
-      ${field('c_name','客户名称',origin.name,true)}${field('c_country','国家/地区',origin.country)}${field('c_contact','联系人',origin.contact)}${field('c_email','邮箱',origin.email)}${field('c_phone','电话',origin.phone)}${field('c_industry','行业',origin.industry)}${field('c_application','主要应用',origin.application)}${field('c_products','常用产品/型号',origin.products)}${field('c_requirements','特殊要求',origin.requirements,false,true)}${field('c_notes','备注',origin.notes,false,true)}${field('c_follow_date','下次跟进日期',origin.nextFollowDate)}${field('c_follow_item','跟进事项',origin.followItem)}<label><input type="checkbox" id="c_follow_done" ${origin.followDone?'checked':''}/> 跟进已完成</label>
+      ${field('c_reg_no','客户注册号',origin.regNo)}${field('c_short_name','客户简称',origin.shortName)}${field('c_name','客户名称',origin.name,true)}${field('c_country','所属国家',origin.country)}${field('c_region','所属区域',origin.region)}<label>客户状态<select id="c_status">${CUSTOMER_STATUS.map(s=>`<option ${origin.status===s?'selected':''}>${s}</option>`).join('')}</select></label>${field('c_contact','联系人',origin.contact)}${field('c_email','邮箱',origin.email)}${field('c_phone','电话',origin.phone)}${field('c_industry','行业',origin.industry)}${field('c_application','主要应用',origin.application)}${field('c_products','常用产品/型号',origin.products)}${field('c_requirements','特殊要求',origin.requirements,false,true)}${field('c_notes','备注',origin.notes,false,true)}${field('c_follow_date','下次跟进日期',origin.nextFollowDate)}${field('c_follow_item','跟进事项',origin.followItem)}<label><input type="checkbox" id="c_follow_done" ${origin.followDone?'checked':''}/> 跟进已完成</label>
     </div><div class="row"><button class="btn primary" id="saveCustomer">保存</button><button class="btn" id="cancelCustomer">取消</button></div></div>`;
     const target = document.getElementById('customers');
     target.insertAdjacentHTML('afterbegin', html);
@@ -385,12 +420,12 @@
       if (!tid) return;
       const t = data.customers.find(c => c.id === tid);
       if (!t) return;
-      const map = { country:'c_country',contact:'c_contact',email:'c_email',phone:'c_phone',industry:'c_industry',application:'c_application',products:'c_products',requirements:'c_requirements',notes:'c_notes',nextFollowDate:'c_follow_date',followItem:'c_follow_item' };
+      const map = { regNo:'c_reg_no',shortName:'c_short_name',country:'c_country',region:'c_region',status:'c_status',contact:'c_contact',email:'c_email',phone:'c_phone',industry:'c_industry',application:'c_application',products:'c_products',requirements:'c_requirements',notes:'c_notes',nextFollowDate:'c_follow_date',followItem:'c_follow_item' };
       Object.keys(map).forEach(k => { const el = document.getElementById(map[k]); if (el) el.value = t[k] || ''; });
       document.getElementById('c_follow_done').checked = !!t.followDone;
     };
     document.getElementById('saveCustomer').onclick = () => {
-      const payload = { name:val('c_name').trim(), country:val('c_country').trim(), contact:val('c_contact').trim(), email:val('c_email').trim(), phone:val('c_phone').trim(), industry:val('c_industry').trim(), application:val('c_application').trim(), products:val('c_products').trim(), requirements:val('c_requirements').trim(), notes:val('c_notes').trim(), nextFollowDate:val('c_follow_date').trim(), followItem:val('c_follow_item').trim(), followDone:document.getElementById('c_follow_done').checked };
+      const payload = { regNo:val('c_reg_no').trim(), shortName:val('c_short_name').trim(), name:val('c_name').trim(), country:val('c_country').trim(), region:val('c_region').trim(), status:val('c_status'), contact:val('c_contact').trim(), email:val('c_email').trim(), phone:val('c_phone').trim(), industry:val('c_industry').trim(), application:val('c_application').trim(), products:val('c_products').trim(), requirements:val('c_requirements').trim(), notes:val('c_notes').trim(), nextFollowDate:val('c_follow_date').trim(), followItem:val('c_follow_item').trim(), followDone:document.getElementById('c_follow_done').checked };
       if (!payload.name) return alert('客户名称不能为空');
       if (id) data.customers = data.customers.map(c => c.id===id ? { ...c, ...payload, updatedAt:now() } : c);
       else data.customers.unshift({ id:uid(), ...payload, createdAt:now(), updatedAt:now() });
@@ -404,7 +439,12 @@
     const filteredRows = data.projects.filter(p => {
       const status = p.workStatus || '进行中';
       const q = projectKeyword.trim().toLowerCase();
-      const passQ = !q || [p.name, customerName(p.customerId), p.model, p.stage, p.nextAction].some(v => (v||'').toLowerCase().includes(q));
+      const today = new Date().toISOString().slice(0,10);
+      const weekEnd = (() => { const d = new Date(); const day = d.getDay() || 7; d.setDate(d.getDate() + (7-day)); return d.toISOString().slice(0,10); })();
+      let passQ = !q || [p.name, customerName(p.customerId), p.model, p.stage, p.nextAction].some(v => (v||'').toLowerCase().includes(q));
+      if (q.startsWith('[today:')) passQ = (p.nextFollowDate || '') === today;
+      if (q.startsWith('[week:')) passQ = (p.nextFollowDate || '') > today && (p.nextFollowDate || '') <= weekEnd;
+      if (q.startsWith('[overdue:')) passQ = (p.nextFollowDate || '') < today;
       const passStage = projectStage === '全部' || p.stage === projectStage;
       const passCustomer = projectCustomerFilter === '全部' || p.customerId === projectCustomerFilter;
       const passPriority = projectPriorityFilter === '全部' || (p.priority||'中') === projectPriorityFilter;
@@ -431,14 +471,14 @@
         <select id="projectSortSel" style="max-width:220px">${['智能优先(逾期/今天/本周/最近更新)','客户','更新时间(新->旧)','下次跟进日期(近->远)','优先级','状态'].map(s=>`<option ${projectSort===s?'selected':''}>${s}</option>`).join('')}</select>
         <button class="btn" id="archiveToggleBtn">${showArchiveProjects ? '返回主项目' : '查看归档项目'}</button>
         <button class="btn primary" id="newProjectBtn">新增项目</button>
-      </div></div>
+      </div><div class="row"><span class="muted">快捷筛选：</span><button class="btn small" data-qf="进行中">进行中</button><button class="btn small" data-qf="今天">今天要跟进</button><button class="btn small" data-qf="本周">本周要跟进</button><button class="btn small" data-qf="逾期">已逾期</button><button class="btn small" data-qf="已归档">已归档</button><button class="btn small" data-qf="重置">重置</button></div></div>
       <div class="card"><table class="table-compact"><thead><tr><th>客户</th><th>项目名称</th><th>当前状态</th><th>下一步动作</th><th>下次跟进日期</th><th>最近更新时间</th><th>操作</th></tr></thead><tbody>
       ${rows.length ? rows.map(p => `<tr>
         <td>${escapeHtml(customerName(p.customerId))}</td>
         <td><div class="proj-name">${escapeHtml(p.name)}</div><div class="subline">优先级：<span class="badge" style="background:${p.priority==='高'?'#dc2626':(p.priority==='中'?'#b45309':'#475569')}">${escapeHtml(p.priority||'中')}</span></div></td>
         <td><span class="badge" style="background:${statusColor(p.workStatus)}">${escapeHtml(p.workStatus||'进行中')}</span></td>
         <td><span class="ellipsis">${escapeHtml(p.nextAction||'-')}</span></td><td>${escapeHtml(p.nextFollowDate||'-')}</td><td><span class="small-time">${fmt(p.updatedAt)}</span></td>
-        <td>${!['已完成','已归档'].includes(p.workStatus||'进行中') ? `<button class="btn small" data-complete-project="${p.id}">标记完成</button>` : ''}<button class="btn small" data-copy-project="${p.id}">复制</button><button class="btn small" data-edit-project="${p.id}">编辑</button><button class="btn small danger" data-del-project="${p.id}">删除</button></td>
+        <td>${!['已完成','已归档'].includes(p.workStatus||'进行中') ? `<button class="btn small" data-complete-project="${p.id}">标记完成</button>` : ''}<button class="btn small" data-addlog-project="${p.id}">+跟进</button><button class="btn small" data-copy-project="${p.id}">复制</button><button class="btn small" data-edit-project="${p.id}">编辑</button><button class="btn small danger" data-del-project="${p.id}">删除</button></td>
       </tr>`).join('') : '<tr><td colspan="7" class="empty">暂无项目</td></tr>'}
       </tbody></table></div>
       <div class="card"><div class="row">
@@ -463,10 +503,34 @@
     document.getElementById('projectPrevPage').onclick = () => { if (projectPage > 1) { projectPage -= 1; renderProjects(); } };
     document.getElementById('projectNextPage').onclick = () => { if (projectPage < totalPages) { projectPage += 1; renderProjects(); } };
     document.getElementById('archiveToggleBtn').onclick = () => { showArchiveProjects = !showArchiveProjects; projectStatusFilter = showArchiveProjects ? '全部' : '默认'; projectPage = 1; renderProjects(); };
+    box.querySelectorAll('[data-qf]').forEach(btn => btn.onclick = () => {
+      const type = btn.dataset.qf;
+      const today = new Date().toISOString().slice(0,10);
+      const weekEnd = (() => { const d = new Date(); const day = d.getDay() || 7; d.setDate(d.getDate() + (7-day)); return d.toISOString().slice(0,10); })();
+      if (type === '进行中') { projectStatusFilter = '进行中'; showArchiveProjects = false; }
+      else if (type === '已归档') { showArchiveProjects = true; projectStatusFilter = '全部'; }
+      else if (type === '今天') { projectStatusFilter = '全部'; projectKeyword=''; projectSort='下次跟进日期(近->远)'; data.projects = data.projects.map(p => p); }
+      else if (type === '本周') { projectStatusFilter = '全部'; projectSort='下次跟进日期(近->远)'; }
+      else if (type === '逾期') { projectStatusFilter = '全部'; projectSort='下次跟进日期(近->远)'; }
+      else { projectStatusFilter = '默认'; showArchiveProjects = false; projectSort='智能优先(逾期/今天/本周/最近更新)'; }
+      projectPage = 1;
+      if (type === '今天') projectKeyword = `[TODAY:${today}]`;
+      else if (type === '本周') projectKeyword = `[WEEK:${today}-${weekEnd}]`;
+      else if (type === '逾期') projectKeyword = `[OVERDUE:${today}]`;
+      else if (type !== '重置') projectKeyword = '';
+      else projectKeyword = '';
+      renderProjects();
+    });
     document.getElementById('newProjectBtn').onclick = () => openProjectForm();
 
     box.querySelectorAll('[data-edit-project]').forEach(el => el.onclick = () => openProjectForm(el.dataset.editProject));
     box.querySelectorAll('[data-copy-project]').forEach(el => el.onclick = () => openProjectForm('', '', el.dataset.copyProject));
+    box.querySelectorAll('[data-addlog-project]').forEach(el => el.onclick = () => {
+      const note = prompt('输入项目简短跟进记录：');
+      if (!note) return;
+      data.projects = data.projects.map(p => p.id===el.dataset.addlogProject ? { ...appendSimpleLog(p, note), followUps:[{ id: uid(), date: new Date().toISOString().slice(0,10), content: note, createdAt: now() }, ...(p.followUps||[])] } : p);
+      save(); renderProjects();
+    });
     box.querySelectorAll('[data-complete-project]').forEach(el => el.onclick = () => {
       const id = el.dataset.completeProject;
       data.projects = data.projects.map(p => p.id===id ? { ...p, workStatus:'已完成', completeDate:new Date().toISOString().slice(0,10), updatedAt: now() } : p);
@@ -490,12 +554,12 @@
 
   function openProjectForm(id='', forceCustomerId='', copyFromId='') {
     const copyFrom = copyFromId ? data.projects.find(p => p.id === copyFromId) : null;
-    const origin = id ? normalizeProject(data.projects.find(p => p.id===id)) : normalizeProject(copyFrom ? { ...copyFrom, id:'', name:`${copyFrom.name || ''}（复制）`, followUps:[] } : { name:'',customerId:forceCustomerId||'',model:'',applicationDesc:'',stage:'新机会',sampleStatus:'',drawingVersion:'',testStatus:'',deliveryStatus:'',startTime:'',endTime:'',risks:'',nextAction:'',owner:'',notes:'',workStatus:'进行中',priority:'中',nextFollowDate:'',followItem:'',followDone:false,completeDate:'',needFollowUp:false,followUps:[] });
+    const origin = id ? normalizeProject(data.projects.find(p => p.id===id)) : normalizeProject(copyFrom ? { ...copyFrom, id:'', projectCode: nextProjectCode(), name:`${copyFrom.name || ''}（复制）`, followUps:[] } : { projectCode: nextProjectCode(), name:'',customerId:forceCustomerId||'',model:'',applicationDesc:'',stage:'新机会',sampleStatus:'',drawingVersion:'',testStatus:'',deliveryStatus:'',startTime:'',endTime:'',risks:'',nextAction:'',owner:'',notes:'',workStatus:'进行中',priority:'中',nextFollowDate:'',followItem:'',followDone:false,completeDate:'',needFollowUp:false,followUps:[] });
     if (!origin) return;
     const customerOptions = [`<option value="">请选择客户</option>`, ...data.customers.map(c => `<option value="${c.id}" ${origin.customerId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`)].join('');
     const customerList = data.customers.map(c => `<option value="${escapeHtml(c.name)}"></option>`).join('');
     const html = `<div class="card" id="projectFormCard"><h3>${id?'编辑':'新增'}项目</h3><div class="form-grid">
-      ${field('p_name','项目名称',origin.name,true)}<label>所属客户<select id="p_customer" ${forceCustomerId?'disabled':''}>${customerOptions}</select><input id="p_customer_search" list="customerList" placeholder="搜索已有客户名称" ${forceCustomerId?'disabled':''}/><datalist id="customerList">${customerList}</datalist><div class="hint">可输入客户名称快速定位</div></label>
+      ${field('p_code','项目编号',origin.projectCode,true)}${field('p_name','项目名称',origin.name,true)}<label>所属客户<select id="p_customer" ${forceCustomerId?'disabled':''}>${customerOptions}</select><input id="p_customer_search" list="customerList" placeholder="搜索已有客户名称" ${forceCustomerId?'disabled':''}/><datalist id="customerList">${customerList}</datalist><div class="hint">可输入客户名称快速定位</div></label>
       ${field('p_model','产品型号',origin.model)}<label>项目状态<select id="p_work_status">${PROJECT_WORK_STATUS.map(s=>`<option ${origin.workStatus===s?'selected':''}>${s}</option>`).join('')}</select></label>
       <label>优先级<select id="p_priority">${PROJECT_PRIORITY.map(s=>`<option ${origin.priority===s?'selected':''}>${s}</option>`).join('')}</select></label>
       ${field('p_start','开始时间',origin.startTime)}${field('p_end','完成时间',origin.endTime)}${field('p_complete_date','完成日期',origin.completeDate)}
@@ -527,7 +591,7 @@
     }
     document.getElementById('saveProject').onclick = () => {
       const payload = normalizeProject({
-        name:val('p_name').trim(), customerId:forceCustomerId || val('p_customer'), model:val('p_model').trim(), workStatus:val('p_work_status'), priority:val('p_priority'), startTime:val('p_start').trim(), endTime:val('p_end').trim(), completeDate:val('p_complete_date').trim(), applicationDesc:val('p_application').trim(), stage:val('p_stage'), sampleStatus:val('p_sample').trim(), drawingVersion:val('p_drawing').trim(), testStatus:val('p_test').trim(), deliveryStatus:val('p_delivery').trim(), risks:val('p_risks').trim(), nextAction:val('p_next').trim(), owner:val('p_owner').trim(), notes:val('p_notes').trim(), nextFollowDate:val('p_follow_date').trim(), followItem:val('p_follow_item').trim(), followDone:document.getElementById('p_follow_done').checked, needFollowUp:document.getElementById('p_follow').checked
+        projectCode: val('p_code').trim() || nextProjectCode(), name:val('p_name').trim(), customerId:forceCustomerId || val('p_customer'), model:val('p_model').trim(), workStatus:val('p_work_status'), priority:val('p_priority'), startTime:val('p_start').trim(), endTime:val('p_end').trim(), completeDate:val('p_complete_date').trim(), applicationDesc:val('p_application').trim(), stage:val('p_stage'), sampleStatus:val('p_sample').trim(), drawingVersion:val('p_drawing').trim(), testStatus:val('p_test').trim(), deliveryStatus:val('p_delivery').trim(), risks:val('p_risks').trim(), nextAction:val('p_next').trim(), owner:val('p_owner').trim(), notes:val('p_notes').trim(), nextFollowDate:val('p_follow_date').trim(), followItem:val('p_follow_item').trim(), followDone:document.getElementById('p_follow_done').checked, needFollowUp:document.getElementById('p_follow').checked
       });
       if (!payload.name) return alert('项目名称不能为空');
       if (!payload.customerId) return alert('请选择所属客户');
@@ -544,24 +608,38 @@
 
   function renderQuality() {
     const box = document.getElementById('quality');
-    const list = data.qualityIssues.filter(i => {
+    const filtered = data.qualityIssues.filter(i => {
       const q = qualityKeyword.trim().toLowerCase();
-      return !q || [i.customerName, i.projectName, i.title, i.owner, i.status].some(v => (v||'').toLowerCase().includes(q));
+      return !q || [i.complaintNo,i.customerName, i.projectName, i.title, i.owner, i.status, i.source, i.responsibility].some(v => (v||'').toLowerCase().includes(q));
     });
+    const total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / qualityPageSize));
+    if (qualityPage > totalPages) qualityPage = totalPages;
+    const list = filtered.slice((qualityPage - 1) * qualityPageSize, qualityPage * qualityPageSize);
     box.innerHTML = `<div class="card"><div class="row"><input id="qualitySearch" class="grow" placeholder="搜索质量问题" value="${escapeHtml(qualityKeyword)}" /><button class="btn primary" id="newQualityBtn">新增质量问题</button></div></div>
-    <div class="card"><table><thead><tr><th>客户</th><th>项目</th><th>问题标题</th><th>状态</th><th>严重程度</th><th>截止日期</th><th>操作</th></tr></thead><tbody>${list.length ? list.map(i => `<tr><td>${escapeHtml(i.customerName||'-')}</td><td>${escapeHtml(i.projectName||'-')}</td><td>${escapeHtml(i.title||'-')}</td><td>${escapeHtml(i.status||'-')}</td><td>${escapeHtml(i.severity||'-')}</td><td>${escapeHtml(i.deadline||'-')}</td><td><button class="btn small" data-edit-quality="${i.id}">编辑</button><button class="btn small danger" data-del-quality="${i.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="7" class="empty">暂无质量问题记录</td></tr>'}</tbody></table></div>`;
-    document.getElementById('qualitySearch').oninput = e => { qualityKeyword = e.target.value; renderQuality(); };
+    <div class="card"><table><thead><tr><th>投诉号</th><th>客户</th><th>问题标题</th><th>来源/归属</th><th>状态</th><th>截止日期</th><th>操作</th></tr></thead><tbody>${list.length ? list.map(i => `<tr><td>${escapeHtml(i.complaintNo||'-')}</td><td>${escapeHtml(i.customerName||'-')}</td><td>${escapeHtml(i.title||'-')}</td><td>${escapeHtml((i.source||'-') + ' / ' + (i.responsibility||'-'))}</td><td>${escapeHtml(i.status||'-')}</td><td>${escapeHtml(i.deadline||'-')}</td><td><button class="btn small" data-addlog-quality="${i.id}">+跟进</button><button class="btn small" data-edit-quality="${i.id}">编辑</button><button class="btn small danger" data-del-quality="${i.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="7" class="empty">暂无质量问题记录</td></tr>'}</tbody></table></div>
+    <div class="card"><div class="row"><span class="muted">总质量问题：${total}</span><label style="margin:0;">每页<select id="qualityPageSizeSel" style="width:90px; margin-left:6px;">${[10,20,50,100].map(n => `<option value="${n}" ${qualityPageSize===n?'selected':''}>${n}</option>`).join('')}</select></label><button class="btn small" id="qualityPrevPage" ${qualityPage<=1?'disabled':''}>上一页</button><span class="muted">第 ${qualityPage} / ${totalPages} 页</span><button class="btn small" id="qualityNextPage" ${qualityPage>=totalPages?'disabled':''}>下一页</button></div></div>`;
+    document.getElementById('qualitySearch').oninput = e => { qualityKeyword = e.target.value; qualityPage = 1; renderQuality(); };
+    document.getElementById('qualityPageSizeSel').onchange = e => { qualityPageSize = Number(e.target.value)||20; qualityPage = 1; renderQuality(); };
+    document.getElementById('qualityPrevPage').onclick = () => { if (qualityPage > 1) { qualityPage -= 1; renderQuality(); } };
+    document.getElementById('qualityNextPage').onclick = () => { if (qualityPage < totalPages) { qualityPage += 1; renderQuality(); } };
     document.getElementById('newQualityBtn').onclick = () => openQualityForm();
+    box.querySelectorAll('[data-addlog-quality]').forEach(el => el.onclick = () => {
+      const note = prompt('输入质量问题简短跟进记录：');
+      if (!note) return;
+      data.qualityIssues = data.qualityIssues.map(i => i.id===el.dataset.addlogQuality ? appendSimpleLog(i, note) : i);
+      save(); renderQuality();
+    });
     box.querySelectorAll('[data-edit-quality]').forEach(el => el.onclick = () => openQualityForm(el.dataset.editQuality));
     box.querySelectorAll('[data-del-quality]').forEach(el => el.onclick = () => { if (!confirm('确定删除该质量问题记录吗？')) return; data.qualityIssues = data.qualityIssues.filter(x => x.id !== el.dataset.delQuality); save(); renderAll(); });
   }
 
   function openQualityForm(id='') {
-    const origin = id ? data.qualityIssues.find(i => i.id === id) : { customerName:'', projectName:'', title:'', description:'', happenDate:'', severity:'中', status:'新建', temporaryAction:'', rootCause:'', improvement:'', owner:'', deadline:'', notes:'' };
-    const html = `<div class="card" id="qualityFormCard"><h3>${id?'编辑':'新增'}质量问题</h3><div class="form-grid">${field('q_customer','客户名称',origin.customerName)}${field('q_project','项目名称',origin.projectName)}${field('q_title','问题标题',origin.title,true)}${field('q_desc','问题描述',origin.description,false,true)}${field('q_date','发生日期',origin.happenDate)}${field('q_severity','严重程度',origin.severity)}<label>当前状态<select id="q_status">${QUALITY_STATUS.map(s=>`<option ${origin.status===s?'selected':''}>${s}</option>`).join('')}</select></label>${field('q_temp','临时措施',origin.temporaryAction,false,true)}${field('q_root','根因分析',origin.rootCause,false,true)}${field('q_improve','改善措施',origin.improvement,false,true)}${field('q_owner','责任人',origin.owner)}${field('q_deadline','截止日期',origin.deadline)}${field('q_notes','备注',origin.notes,false,true)}</div><div class="row"><button class="btn primary" id="saveQuality">保存</button><button class="btn" id="cancelQuality">取消</button></div></div>`;
+    const origin = id ? data.qualityIssues.find(i => i.id === id) : { complaintNo:`Q-${new Date().getFullYear()}-${String((data.qualityIssues?.length||0)+1).padStart(3,'0')}`, customerName:'', projectName:'', title:'', description:'', happenDate:'', severity:'中', status:'新建', source:'客户投诉', responsibility:'待确认', isClosed:false, closeDate:'', temporaryAction:'', rootCause:'', improvement:'', owner:'', deadline:'', notes:'', followLogs:[] };
+    const html = `<div class="card" id="qualityFormCard"><h3>${id?'编辑':'新增'}质量问题</h3><div class="form-grid">${field('q_no','质量投诉号',origin.complaintNo,true)}${field('q_customer','客户名称',origin.customerName)}${field('q_project','项目名称',origin.projectName)}${field('q_title','问题标题',origin.title,true)}${field('q_desc','问题描述',origin.description,false,true)}${field('q_date','发生日期',origin.happenDate)}${field('q_severity','严重程度',origin.severity)}<label>问题来源<select id="q_source">${QUALITY_SOURCES.map(s=>`<option ${origin.source===s?'selected':''}>${s}</option>`).join('')}</select></label><label>责任归属<select id="q_resp">${QUALITY_OWNERS.map(s=>`<option ${origin.responsibility===s?'selected':''}>${s}</option>`).join('')}</select></label><label>当前状态<select id="q_status">${QUALITY_STATUS.map(s=>`<option ${origin.status===s?'selected':''}>${s}</option>`).join('')}</select></label><label><input type="checkbox" id="q_closed" ${origin.isClosed?'checked':''}/> 是否已关闭</label>${field('q_close_date','关闭日期',origin.closeDate)}${field('q_temp','临时措施',origin.temporaryAction,false,true)}${field('q_root','根因分析',origin.rootCause,false,true)}${field('q_improve','改善措施',origin.improvement,false,true)}${field('q_owner','责任人',origin.owner)}${field('q_deadline','截止日期',origin.deadline)}${field('q_notes','备注',origin.notes,false,true)}</div><div class="row"><button class="btn primary" id="saveQuality">保存</button><button class="btn" id="cancelQuality">取消</button></div></div>`;
     const target = document.getElementById('quality'); target.insertAdjacentHTML('afterbegin', html);
     document.getElementById('saveQuality').onclick = () => {
-      const payload = { customerName:val('q_customer').trim(), projectName:val('q_project').trim(), title:val('q_title').trim(), description:val('q_desc').trim(), happenDate:val('q_date').trim(), severity:val('q_severity').trim(), status:val('q_status'), temporaryAction:val('q_temp').trim(), rootCause:val('q_root').trim(), improvement:val('q_improve').trim(), owner:val('q_owner').trim(), deadline:val('q_deadline').trim(), notes:val('q_notes').trim() };
+      const payload = { complaintNo:val('q_no').trim(), customerName:val('q_customer').trim(), projectName:val('q_project').trim(), title:val('q_title').trim(), description:val('q_desc').trim(), happenDate:val('q_date').trim(), severity:val('q_severity').trim(), source:val('q_source'), responsibility:val('q_resp'), status:val('q_status'), isClosed:document.getElementById('q_closed').checked, closeDate:val('q_close_date').trim(), temporaryAction:val('q_temp').trim(), rootCause:val('q_root').trim(), improvement:val('q_improve').trim(), owner:val('q_owner').trim(), deadline:val('q_deadline').trim(), notes:val('q_notes').trim() };
       if (!payload.title) return alert('问题标题不能为空');
       if (id) data.qualityIssues = data.qualityIssues.map(x => x.id===id ? { ...x, ...payload, updatedAt: now() } : x);
       else data.qualityIssues.unshift({ id:uid(), ...payload, createdAt:now(), updatedAt:now() });
@@ -577,19 +655,25 @@
       return !q || [s.customerName, s.projectName, s.model, s.trackingNo, s.receiver, s.status].some(v => (v||'').toLowerCase().includes(q));
     });
     box.innerHTML = `<div class="card"><div class="row"><input id="shipmentSearch" class="grow" placeholder="搜索发货记录" value="${escapeHtml(shipmentKeyword)}" /><button class="btn primary" id="newShipmentBtn">新增发货记录</button></div></div>
-    <div class="card"><table><thead><tr><th>客户</th><th>项目</th><th>型号</th><th>数量</th><th>发货日期</th><th>状态</th><th>操作</th></tr></thead><tbody>${list.length ? list.map(s => `<tr><td>${escapeHtml(s.customerName||'-')}</td><td>${escapeHtml(s.projectName||'-')}</td><td>${escapeHtml(s.model||'-')}</td><td>${escapeHtml(s.qty||'-')}</td><td>${escapeHtml(s.shipDate||'-')}</td><td>${escapeHtml(s.status||'-')}</td><td><button class="btn small" data-edit-shipment="${s.id}">编辑</button><button class="btn small danger" data-del-shipment="${s.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="7" class="empty">暂无样机发货记录</td></tr>'}</tbody></table></div>`;
+    <div class="card"><table><thead><tr><th>客户</th><th>项目</th><th>型号</th><th>数量</th><th>发货日期</th><th>状态</th><th>是否收到反馈</th><th>操作</th></tr></thead><tbody>${list.length ? list.map(s => `<tr><td>${escapeHtml(s.customerName||'-')}</td><td>${escapeHtml(s.projectName||'-')}</td><td>${escapeHtml(s.model||'-')}</td><td>${escapeHtml(s.qty||'-')}</td><td>${escapeHtml(s.shipDate||'-')}</td><td>${escapeHtml(s.status||'-')}</td><td>${s.receivedFeedback?'是':'否'}</td><td><button class="btn small" data-addlog-shipment="${s.id}">+跟进</button><button class="btn small" data-edit-shipment="${s.id}">编辑</button><button class="btn small danger" data-del-shipment="${s.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="8" class="empty">暂无样机发货记录</td></tr>'}</tbody></table></div>`;
     document.getElementById('shipmentSearch').oninput = e => { shipmentKeyword = e.target.value; renderShipments(); };
     document.getElementById('newShipmentBtn').onclick = () => openShipmentForm();
+    box.querySelectorAll('[data-addlog-shipment]').forEach(el => el.onclick = () => {
+      const note = prompt('输入样机发货简短跟进记录：');
+      if (!note) return;
+      data.shipments = data.shipments.map(s => s.id===el.dataset.addlogShipment ? appendSimpleLog(s, note) : s);
+      save(); renderShipments();
+    });
     box.querySelectorAll('[data-edit-shipment]').forEach(el => el.onclick = () => openShipmentForm(el.dataset.editShipment));
     box.querySelectorAll('[data-del-shipment]').forEach(el => el.onclick = () => { if (!confirm('确定删除该发货记录吗？')) return; data.shipments = data.shipments.filter(x => x.id !== el.dataset.delShipment); save(); renderAll(); });
   }
 
   function openShipmentForm(id='') {
-    const origin = id ? data.shipments.find(s => s.id === id) : { customerName:'', projectName:'', model:'', qty:'', shipDate:'', trackingNo:'', receiver:'', address:'', status:'待发货', feedback:'', notes:'' };
-    const html = `<div class="card" id="shipmentFormCard"><h3>${id?'编辑':'新增'}样机发货记录</h3><div class="form-grid">${field('s_customer','客户名称',origin.customerName)}${field('s_project','项目名称',origin.projectName)}${field('s_model','样机型号',origin.model,true)}${field('s_qty','数量',origin.qty)}${field('s_ship_date','发货日期',origin.shipDate)}${field('s_tracking','快递单号',origin.trackingNo)}${field('s_receiver','收件人',origin.receiver)}${field('s_address','收货地址',origin.address,false,true)}<label>当前状态<select id="s_status">${SHIPMENT_STATUS.map(s=>`<option ${origin.status===s?'selected':''}>${s}</option>`).join('')}</select></label>${field('s_feedback','反馈情况',origin.feedback,false,true)}${field('s_notes','备注',origin.notes,false,true)}</div><div class="row"><button class="btn primary" id="saveShipment">保存</button><button class="btn" id="cancelShipment">取消</button></div></div>`;
+    const origin = id ? data.shipments.find(s => s.id === id) : { customerName:'', projectName:'', model:'', qty:'', shipDate:'', trackingNo:'', receiver:'', address:'', status:'待发货', receivedFeedback:false, feedback:'', notes:'', followLogs:[] };
+    const html = `<div class="card" id="shipmentFormCard"><h3>${id?'编辑':'新增'}样机发货记录</h3><div class="form-grid">${field('s_customer','客户名称',origin.customerName)}${field('s_project','项目名称',origin.projectName)}${field('s_model','样机型号',origin.model,true)}${field('s_qty','数量',origin.qty)}${field('s_ship_date','发货日期',origin.shipDate)}${field('s_tracking','快递单号',origin.trackingNo)}${field('s_receiver','收件人',origin.receiver)}${field('s_address','收货地址',origin.address,false,true)}<label>当前状态<select id="s_status">${SHIPMENT_STATUS.map(s=>`<option ${origin.status===s?'selected':''}>${s}</option>`).join('')}</select></label><label><input type="checkbox" id="s_feedback_received" ${origin.receivedFeedback?'checked':''}/> 是否收到反馈</label>${field('s_feedback','反馈情况',origin.feedback,false,true)}${field('s_notes','备注',origin.notes,false,true)}</div><div class="row"><button class="btn primary" id="saveShipment">保存</button><button class="btn" id="cancelShipment">取消</button></div></div>`;
     const target = document.getElementById('shipments'); target.insertAdjacentHTML('afterbegin', html);
     document.getElementById('saveShipment').onclick = () => {
-      const payload = { customerName:val('s_customer').trim(), projectName:val('s_project').trim(), model:val('s_model').trim(), qty:val('s_qty').trim(), shipDate:val('s_ship_date').trim(), trackingNo:val('s_tracking').trim(), receiver:val('s_receiver').trim(), address:val('s_address').trim(), status:val('s_status'), feedback:val('s_feedback').trim(), notes:val('s_notes').trim() };
+      const payload = { customerName:val('s_customer').trim(), projectName:val('s_project').trim(), model:val('s_model').trim(), qty:val('s_qty').trim(), shipDate:val('s_ship_date').trim(), trackingNo:val('s_tracking').trim(), receiver:val('s_receiver').trim(), address:val('s_address').trim(), status:val('s_status'), receivedFeedback:document.getElementById('s_feedback_received').checked, feedback:val('s_feedback').trim(), notes:val('s_notes').trim() };
       if (!payload.model) return alert('样机型号不能为空');
       if (id) data.shipments = data.shipments.map(x => x.id===id ? { ...x, ...payload, updatedAt: now() } : x);
       else data.shipments.unshift({ id: uid(), ...payload, createdAt: now(), updatedAt: now() });
