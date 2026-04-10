@@ -26,6 +26,10 @@
     table { width:100%; border-collapse:collapse; }
     th,td { border-bottom:1px solid var(--line); padding:10px 8px; text-align:left; vertical-align:top; }
     th { background:#f8fafc; }
+    .table-compact th { white-space: nowrap; }
+    .proj-name { font-weight: 600; }
+    .subline { margin-top:4px; color:var(--muted); font-size:12px; }
+    .ellipsis { max-width:360px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }
     .empty { color:var(--muted); text-align:center; padding:16px; }
     .grid-2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:10px; }
     .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; }
@@ -39,6 +43,7 @@
     .muted { color:var(--muted); }
     label { font-size:13px; color:#334155; display:block; margin-bottom:8px; }
     .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
+    .hint { font-size:12px; color:var(--muted); margin-top:4px; }
   </style>
 </head>
 <body>
@@ -87,12 +92,13 @@
 
   let data = load();
   let customerKeyword = '';
+  let customerSort = '更新时间(新->旧)';
   let projectKeyword = '';
   let projectStage = '全部';
   let projectCustomerFilter = '全部';
   let projectStatusFilter = '默认';
   let projectPriorityFilter = '全部';
-  let projectSort = '更新时间(新->旧)';
+  let projectSort = '智能优先(逾期/今天/本周/最近更新)';
   let showArchiveProjects = false;
   let activeCustomerId = '';
   let activeProjectId = '';
@@ -248,6 +254,28 @@
   function normalizeBool(v) { return ['1','true','是','已完成','y','yes'].includes(String(v ?? '').trim().toLowerCase()); }
   function normalizeProjectWorkStatus(v) { const s = String(v||'').trim(); return PROJECT_WORK_STATUS.includes(s) ? s : '进行中'; }
   function normalizePriority(v) { const s = String(v||'').trim(); return PROJECT_PRIORITY.includes(s) ? s : '中'; }
+  function priorityRank(v) { return { '高':0, '中':1, '低':2 }[v || '中'] ?? 1; }
+  function statusRank(v) { return { '待跟进':0, '进行中':1, '已暂停':2, '已完成':3, '已归档':4 }[v || '进行中'] ?? 1; }
+  function urgencyRankByDate(dateStr) {
+    if (!dateStr) return 4;
+    const today = new Date().toISOString().slice(0,10);
+    const weekEnd = (() => { const d = new Date(); const day = d.getDay() || 7; d.setDate(d.getDate() + (7 - day)); return d.toISOString().slice(0,10); })();
+    if (dateStr < today) return 0;
+    if (dateStr === today) return 1;
+    if (dateStr <= weekEnd) return 2;
+    return 3;
+  }
+  function sortProjects(a, b) {
+    if (projectSort === '客户') return customerName(a.customerId).localeCompare(customerName(b.customerId), 'zh');
+    if (projectSort === '更新时间(新->旧)') return new Date(b.updatedAt) - new Date(a.updatedAt);
+    if (projectSort === '下次跟进日期(近->远)') return (a.nextFollowDate || '9999-12-31').localeCompare(b.nextFollowDate || '9999-12-31');
+    if (projectSort === '优先级') return priorityRank(a.priority) - priorityRank(b.priority);
+    if (projectSort === '状态') return statusRank(a.workStatus) - statusRank(b.workStatus);
+    // 默认：逾期 -> 今天 -> 本周 -> 最近更新
+    const ra = urgencyRankByDate(a.nextFollowDate), rb = urgencyRankByDate(b.nextFollowDate);
+    if (ra !== rb) return ra - rb;
+    return new Date(b.updatedAt) - new Date(a.updatedAt);
+  }
 
   function importExcelRows(rows) {
     const ts = now();
@@ -318,13 +346,18 @@
     const list = data.customers.filter(c => {
       const q = customerKeyword.trim().toLowerCase();
       return !q || [c.name,c.country,c.contact,c.industry].some(v => (v||'').toLowerCase().includes(q));
+    }).sort((a,b) => {
+      if (customerSort === '名称') return (a.name || '').localeCompare(b.name || '', 'zh');
+      if (customerSort === '创建时间(新->旧)') return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0);
     });
     box.innerHTML = `
-      <div class="card"><div class="row"><input class="grow" id="customerSearch" placeholder="搜索客户" value="${escapeHtml(customerKeyword)}" /><button class="btn primary" id="newCustomerBtn">新增客户</button></div></div>
+      <div class="card"><div class="row"><input class="grow" id="customerSearch" placeholder="搜索客户" value="${escapeHtml(customerKeyword)}" /><select id="customerSortSel" style="max-width:180px">${['名称','创建时间(新->旧)','更新时间(新->旧)'].map(s=>`<option ${customerSort===s?'selected':''}>${s}</option>`).join('')}</select><button class="btn primary" id="newCustomerBtn">新增客户</button></div></div>
       <div class="card"><table><thead><tr><th>名称</th><th>国家</th><th>联系人</th><th>行业</th><th>更新时间</th><th>操作</th></tr></thead><tbody>
       ${list.length ? list.map(c => `<tr><td>${escapeHtml(c.name)}</td><td>${escapeHtml(c.country||'-')}</td><td>${escapeHtml(c.contact||'-')}</td><td>${escapeHtml(c.industry||'-')}</td><td>${fmt(c.updatedAt)}</td><td><button class="btn small" data-edit-customer="${c.id}">编辑</button><button class="btn small danger" data-del-customer="${c.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">暂无客户</td></tr>'}
       </tbody></table></div>`;
     document.getElementById('customerSearch').oninput = e => { customerKeyword = e.target.value; renderCustomers(); };
+    document.getElementById('customerSortSel').onchange = e => { customerSort = e.target.value; renderCustomers(); };
     document.getElementById('newCustomerBtn').onclick = () => openCustomerForm();
     box.querySelectorAll('[data-edit-customer]').forEach(el => el.onclick = () => openCustomerForm(el.dataset.editCustomer));
     box.querySelectorAll('[data-del-customer]').forEach(el => el.onclick = () => {
@@ -338,11 +371,21 @@
 
   function openCustomerForm(id='') {
     const origin = id ? data.customers.find(c => c.id === id) : { name:'',country:'',contact:'',email:'',phone:'',industry:'',application:'',products:'',requirements:'',notes:'',nextFollowDate:'',followItem:'',followDone:false };
-    const html = `<div class="card" id="customerFormCard"><h3>${id?'编辑':'新增'}客户</h3><div class="form-grid">
+    const templateOptions = ['<option value="">复制已有客户资料（可选）</option>', ...data.customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`)].join('');
+    const html = `<div class="card" id="customerFormCard"><h3>${id?'编辑':'新增'}客户</h3><div class="row"><select id="customerTemplateSel" style="max-width:280px">${templateOptions}</select><button class="btn" id="applyCustomerTemplate">套用模板</button></div><div class="form-grid">
       ${field('c_name','客户名称',origin.name,true)}${field('c_country','国家/地区',origin.country)}${field('c_contact','联系人',origin.contact)}${field('c_email','邮箱',origin.email)}${field('c_phone','电话',origin.phone)}${field('c_industry','行业',origin.industry)}${field('c_application','主要应用',origin.application)}${field('c_products','常用产品/型号',origin.products)}${field('c_requirements','特殊要求',origin.requirements,false,true)}${field('c_notes','备注',origin.notes,false,true)}${field('c_follow_date','下次跟进日期',origin.nextFollowDate)}${field('c_follow_item','跟进事项',origin.followItem)}<label><input type="checkbox" id="c_follow_done" ${origin.followDone?'checked':''}/> 跟进已完成</label>
     </div><div class="row"><button class="btn primary" id="saveCustomer">保存</button><button class="btn" id="cancelCustomer">取消</button></div></div>`;
     const target = document.getElementById('customers');
     target.insertAdjacentHTML('afterbegin', html);
+    document.getElementById('applyCustomerTemplate').onclick = () => {
+      const tid = document.getElementById('customerTemplateSel').value;
+      if (!tid) return;
+      const t = data.customers.find(c => c.id === tid);
+      if (!t) return;
+      const map = { country:'c_country',contact:'c_contact',email:'c_email',phone:'c_phone',industry:'c_industry',application:'c_application',products:'c_products',requirements:'c_requirements',notes:'c_notes',nextFollowDate:'c_follow_date',followItem:'c_follow_item' };
+      Object.keys(map).forEach(k => { const el = document.getElementById(map[k]); if (el) el.value = t[k] || ''; });
+      document.getElementById('c_follow_done').checked = !!t.followDone;
+    };
     document.getElementById('saveCustomer').onclick = () => {
       const payload = { name:val('c_name').trim(), country:val('c_country').trim(), contact:val('c_contact').trim(), email:val('c_email').trim(), phone:val('c_phone').trim(), industry:val('c_industry').trim(), application:val('c_application').trim(), products:val('c_products').trim(), requirements:val('c_requirements').trim(), notes:val('c_notes').trim(), nextFollowDate:val('c_follow_date').trim(), followItem:val('c_follow_item').trim(), followDone:document.getElementById('c_follow_done').checked };
       if (!payload.name) return alert('客户名称不能为空');
@@ -367,10 +410,7 @@
         : status === projectStatusFilter;
       const passArchive = showArchiveProjects ? ['已完成','已归档'].includes(status) : true;
       return passQ && passStage && passCustomer && passPriority && passStatus && passArchive;
-    }).sort((a,b) => {
-      if (projectSort === '下次跟进日期(近->远)') return (a.nextFollowDate || '9999-12-31').localeCompare(b.nextFollowDate || '9999-12-31');
-      return new Date(b.updatedAt) - new Date(a.updatedAt);
-    });
+    }).sort((a,b) => sortProjects(a,b));
 
     const customerOptions = ['<option>全部</option>', ...data.customers.map(c => `<option value="${c.id}" ${projectCustomerFilter===c.id?'selected':''}>${escapeHtml(c.name)}</option>`)].join('');
     box.innerHTML = `
@@ -380,17 +420,18 @@
         <select id="projectStatusSel" style="max-width:140px">${['默认','全部',...PROJECT_WORK_STATUS].map(s=>`<option ${projectStatusFilter===s?'selected':''}>${s}</option>`).join('')}</select>
         <select id="projectPrioritySel" style="max-width:120px">${['全部',...PROJECT_PRIORITY].map(s=>`<option ${projectPriorityFilter===s?'selected':''}>${s}</option>`).join('')}</select>
         <select id="projectStageSel" style="max-width:150px">${['全部',...STAGES].map(s=>`<option ${projectStage===s?'selected':''}>${s}</option>`).join('')}</select>
-        <select id="projectSortSel" style="max-width:190px">${['更新时间(新->旧)','下次跟进日期(近->远)'].map(s=>`<option ${projectSort===s?'selected':''}>${s}</option>`).join('')}</select>
+        <select id="projectSortSel" style="max-width:220px">${['智能优先(逾期/今天/本周/最近更新)','客户','更新时间(新->旧)','下次跟进日期(近->远)','优先级','状态'].map(s=>`<option ${projectSort===s?'selected':''}>${s}</option>`).join('')}</select>
         <button class="btn" id="archiveToggleBtn">${showArchiveProjects ? '返回主项目' : '查看归档项目'}</button>
         <button class="btn primary" id="newProjectBtn">新增项目</button>
       </div></div>
-      <div class="card"><table><thead><tr><th>项目名称</th><th>客户</th><th>当前状态</th><th>优先级</th><th>下一步动作</th><th>下次跟进日期</th><th>最近更新时间</th><th>操作</th></tr></thead><tbody>
+      <div class="card"><table class="table-compact"><thead><tr><th>客户</th><th>项目名称</th><th>当前状态</th><th>下一步动作</th><th>下次跟进日期</th><th>最近更新时间</th><th>操作</th></tr></thead><tbody>
       ${rows.length ? rows.map(p => `<tr>
-        <td>${escapeHtml(p.name)}</td><td>${escapeHtml(customerName(p.customerId))}</td>
+        <td>${escapeHtml(customerName(p.customerId))}</td>
+        <td><div class="proj-name">${escapeHtml(p.name)}</div><div class="subline">优先级：<span class="badge" style="background:${p.priority==='高'?'#dc2626':(p.priority==='中'?'#b45309':'#475569')}">${escapeHtml(p.priority||'中')}</span></div></td>
         <td><span class="badge" style="background:${statusColor(p.workStatus)}">${escapeHtml(p.workStatus||'进行中')}</span></td>
-        <td>${escapeHtml(p.priority||'中')}</td><td>${escapeHtml(p.nextAction||'-')}</td><td>${escapeHtml(p.nextFollowDate||'-')}</td><td>${fmt(p.updatedAt)}</td>
-        <td>${!['已完成','已归档'].includes(p.workStatus||'进行中') ? `<button class="btn small" data-complete-project="${p.id}">标记完成</button>` : ''}<button class="btn small" data-edit-project="${p.id}">编辑</button><button class="btn small danger" data-del-project="${p.id}">删除</button></td>
-      </tr>`).join('') : '<tr><td colspan="8" class="empty">暂无项目</td></tr>'}
+        <td><span class="ellipsis">${escapeHtml(p.nextAction||'-')}</span></td><td>${escapeHtml(p.nextFollowDate||'-')}</td><td>${fmt(p.updatedAt)}</td>
+        <td>${!['已完成','已归档'].includes(p.workStatus||'进行中') ? `<button class="btn small" data-complete-project="${p.id}">标记完成</button>` : ''}<button class="btn small" data-copy-project="${p.id}">复制</button><button class="btn small" data-edit-project="${p.id}">编辑</button><button class="btn small danger" data-del-project="${p.id}">删除</button></td>
+      </tr>`).join('') : '<tr><td colspan="7" class="empty">暂无项目</td></tr>'}
       </tbody></table></div>`;
 
     document.getElementById('projectSearch').oninput = e => { projectKeyword = e.target.value; renderProjects(); };
@@ -403,6 +444,7 @@
     document.getElementById('newProjectBtn').onclick = () => openProjectForm();
 
     box.querySelectorAll('[data-edit-project]').forEach(el => el.onclick = () => openProjectForm(el.dataset.editProject));
+    box.querySelectorAll('[data-copy-project]').forEach(el => el.onclick = () => openProjectForm('', '', el.dataset.copyProject));
     box.querySelectorAll('[data-complete-project]').forEach(el => el.onclick = () => {
       const id = el.dataset.completeProject;
       data.projects = data.projects.map(p => p.id===id ? { ...p, workStatus:'已完成', completeDate:new Date().toISOString().slice(0,10), updatedAt: now() } : p);
@@ -422,12 +464,14 @@
     return '#2563eb';
   }
 
-  function openProjectForm(id='', forceCustomerId='') {
-    const origin = id ? normalizeProject(data.projects.find(p => p.id===id)) : normalizeProject({ name:'',customerId:forceCustomerId||'',model:'',applicationDesc:'',stage:'新机会',sampleStatus:'',drawingVersion:'',testStatus:'',deliveryStatus:'',startTime:'',endTime:'',risks:'',nextAction:'',owner:'',notes:'',workStatus:'进行中',priority:'中',nextFollowDate:'',followItem:'',followDone:false,completeDate:'',needFollowUp:false,followUps:[] });
+  function openProjectForm(id='', forceCustomerId='', copyFromId='') {
+    const copyFrom = copyFromId ? data.projects.find(p => p.id === copyFromId) : null;
+    const origin = id ? normalizeProject(data.projects.find(p => p.id===id)) : normalizeProject(copyFrom ? { ...copyFrom, id:'', name:`${copyFrom.name || ''}（复制）`, followUps:[] } : { name:'',customerId:forceCustomerId||'',model:'',applicationDesc:'',stage:'新机会',sampleStatus:'',drawingVersion:'',testStatus:'',deliveryStatus:'',startTime:'',endTime:'',risks:'',nextAction:'',owner:'',notes:'',workStatus:'进行中',priority:'中',nextFollowDate:'',followItem:'',followDone:false,completeDate:'',needFollowUp:false,followUps:[] });
     if (!origin) return;
     const customerOptions = [`<option value="">请选择客户</option>`, ...data.customers.map(c => `<option value="${c.id}" ${origin.customerId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`)].join('');
+    const customerList = data.customers.map(c => `<option value="${escapeHtml(c.name)}"></option>`).join('');
     const html = `<div class="card" id="projectFormCard"><h3>${id?'编辑':'新增'}项目</h3><div class="form-grid">
-      ${field('p_name','项目名称',origin.name,true)}<label>所属客户<select id="p_customer" ${forceCustomerId?'disabled':''}>${customerOptions}</select></label>
+      ${field('p_name','项目名称',origin.name,true)}<label>所属客户<select id="p_customer" ${forceCustomerId?'disabled':''}>${customerOptions}</select><input id="p_customer_search" list="customerList" placeholder="搜索已有客户名称" ${forceCustomerId?'disabled':''}/><datalist id="customerList">${customerList}</datalist><div class="hint">可输入客户名称快速定位</div></label>
       ${field('p_model','产品型号',origin.model)}<label>项目状态<select id="p_work_status">${PROJECT_WORK_STATUS.map(s=>`<option ${origin.workStatus===s?'selected':''}>${s}</option>`).join('')}</select></label>
       <label>优先级<select id="p_priority">${PROJECT_PRIORITY.map(s=>`<option ${origin.priority===s?'selected':''}>${s}</option>`).join('')}</select></label>
       ${field('p_start','开始时间',origin.startTime)}${field('p_end','完成时间',origin.endTime)}${field('p_complete_date','完成日期',origin.completeDate)}
@@ -440,6 +484,23 @@
     const target = document.getElementById('projects');
     target.insertAdjacentHTML('afterbegin', html);
     if (forceCustomerId) document.getElementById('p_customer').value = forceCustomerId;
+    target.insertAdjacentHTML('afterbegin', `<div class="card" id="projectRefCard"><b>客户最近项目参考：</b><div class="muted">选择客户后显示</div></div>`);
+    const refreshRef = () => {
+      const cid = document.getElementById('p_customer').value;
+      const ref = document.getElementById('projectRefCard');
+      if (!cid) { ref.innerHTML = '<b>客户最近项目参考：</b><div class="muted">选择客户后显示</div>'; return; }
+      const recent = data.projects.filter(p => p.customerId === cid).sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt)).slice(0,5);
+      ref.innerHTML = `<b>客户最近项目参考：</b>${recent.length ? `<ul>${recent.map(p => `<li>${escapeHtml(p.name)} · ${escapeHtml(p.workStatus||'进行中')} · ${fmt(p.updatedAt)}</li>`).join('')}</ul>` : '<div class="muted">该客户暂无历史项目</div>'}`;
+    };
+    refreshRef();
+    document.getElementById('p_customer').onchange = refreshRef;
+    const searchInput = document.getElementById('p_customer_search');
+    if (searchInput) {
+      searchInput.oninput = (e) => {
+        const c = data.customers.find(x => x.name === e.target.value.trim());
+        if (c && !forceCustomerId) { document.getElementById('p_customer').value = c.id; refreshRef(); }
+      };
+    }
     document.getElementById('saveProject').onclick = () => {
       const payload = normalizeProject({
         name:val('p_name').trim(), customerId:forceCustomerId || val('p_customer'), model:val('p_model').trim(), workStatus:val('p_work_status'), priority:val('p_priority'), startTime:val('p_start').trim(), endTime:val('p_end').trim(), completeDate:val('p_complete_date').trim(), applicationDesc:val('p_application').trim(), stage:val('p_stage'), sampleStatus:val('p_sample').trim(), drawingVersion:val('p_drawing').trim(), testStatus:val('p_test').trim(), deliveryStatus:val('p_delivery').trim(), risks:val('p_risks').trim(), nextAction:val('p_next').trim(), owner:val('p_owner').trim(), notes:val('p_notes').trim(), nextFollowDate:val('p_follow_date').trim(), followItem:val('p_follow_item').trim(), followDone:document.getElementById('p_follow_done').checked, needFollowUp:document.getElementById('p_follow').checked
@@ -450,7 +511,10 @@
       else data.projects.unshift({ id: uid(), ...payload, followUps:[], createdAt: now(), updatedAt: now() });
       save(); renderAll();
     };
-    document.getElementById('cancelProject').onclick = () => document.getElementById('projectFormCard').remove();
+    document.getElementById('cancelProject').onclick = () => {
+      document.getElementById('projectFormCard').remove();
+      const r = document.getElementById('projectRefCard'); if (r) r.remove();
+    };
   }
 
   function renderQuality() {
