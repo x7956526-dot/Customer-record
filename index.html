@@ -122,6 +122,7 @@
   let qualityArchiveFilter = '未归档';
   let qualitySort = '更新时间(新->旧)';
   let showQualityArchived = false;
+  let qualityQuickMode = '';
   let shipmentKeyword = '';
   let shipmentPage = 1;
   let shipmentPageSize = 20;
@@ -131,6 +132,7 @@
   let shipmentArchiveFilter = '未归档';
   let shipmentSort = '更新时间(新->旧)';
   let showShipmentArchived = false;
+  let shipmentQuickMode = '';
 
   function load() {
     try {
@@ -401,6 +403,14 @@
     data.projects = data.projects.map(p => p.id===id ? { ...p, workStatus:'已完成', completeDate:new Date().toISOString().slice(0,10), updatedAt: now() } : p);
     save(); renderAll();
   }
+  function archiveProject(id) {
+    data.projects = data.projects.map(p => p.id===id ? { ...p, workStatus:'已归档', updatedAt: now() } : p);
+    save(); renderAll();
+  }
+  function restoreProject(id) {
+    data.projects = data.projects.map(p => p.id===id ? { ...p, workStatus:'进行中', updatedAt: now() } : p);
+    save(); renderAll();
+  }
   function deleteProject(id) {
     if (!confirm('确定删除该项目吗？')) return;
     data.projects = data.projects.filter(p => p.id !== id);
@@ -610,14 +620,14 @@
         <select id="projectSortSel" style="max-width:220px">${['智能优先(逾期/今天/本周/最近更新)','客户','更新时间(新->旧)','下次跟进日期(近->远)','优先级','状态'].map(s=>`<option ${projectSort===s?'selected':''}>${s}</option>`).join('')}</select>
         <button class="btn" id="archiveToggleBtn">${showArchiveProjects ? '返回主项目' : '查看归档项目'}</button>
         <button class="btn primary" id="newProjectBtn">新增项目</button>
-      </div><div class="row"><span class="muted">快捷筛选：</span><button class="btn small" data-qf="进行中">进行中</button><button class="btn small" data-qf="今天">今天要跟进</button><button class="btn small" data-qf="本周">本周要跟进</button><button class="btn small" data-qf="逾期">已逾期</button><button class="btn small" data-qf="已归档">已归档</button><button class="btn small" data-qf="重置">重置</button></div></div>
+      </div><div class="row"><span class="muted">快捷筛选：</span><button class="btn small" data-qf="进行中">进行中</button><button class="btn small" data-qf="今天">今天要跟进</button><button class="btn small" data-qf="本周">本周要跟进</button><button class="btn small" data-qf="逾期">已逾期</button><button class="btn small" data-qf="已归档">已归档</button><button class="btn small" data-qf="未归档">未归档</button><button class="btn small" data-qf="重置">重置</button></div></div>
       <div class="card"><table class="table-compact"><thead><tr><th>客户</th><th>项目名称</th><th>当前状态</th><th>下一步动作</th><th>下次跟进日期</th><th>最近更新时间</th><th>操作</th></tr></thead><tbody>
       ${rows.length ? rows.map(p => `<tr>
         <td>${escapeHtml(customerName(p.customerId))}</td>
         <td><div class="proj-name">${escapeHtml(p.name)}</div><div class="subline">优先级：<span class="badge" style="background:${p.priority==='高'?'#dc2626':(p.priority==='中'?'#b45309':'#475569')}">${escapeHtml(p.priority||'中')}</span></div></td>
         <td><span class="badge" style="background:${statusColor(p.workStatus)}">${escapeHtml(p.workStatus||'进行中')}</span></td>
         <td><span class="ellipsis">${escapeHtml(p.nextAction||'-')}</span></td><td>${escapeHtml(p.nextFollowDate||'-')}</td><td><span class="small-time">${fmt(p.updatedAt)}</span></td>
-        <td style="min-width:220px"><button class="btn small" data-view-project="${p.id}">详情</button><button class="btn small" data-follow-project="${p.id}">跟进</button>${projectFollowMenuId===p.id?`<div class="card" style="position:absolute; z-index:20; margin-top:6px; padding:8px;"><div class="row"><button class="btn small" data-follow-done-project="${p.id}">跟进完成</button><button class="btn small" data-follow-delay1-project="${p.id}">延后明天</button><button class="btn small" data-follow-delay3-project="${p.id}">延后3天</button><button class="btn small" data-follow-delay7-project="${p.id}">延后7天</button><button class="btn small" data-follow-custom-project="${p.id}">自定义日期</button><button class="btn small" data-close-follow-menu>关闭</button></div></div>`:''}<button class="btn small" data-edit-project="${p.id}">编辑</button></td>
+        <td style="min-width:220px"><button class="btn small" data-view-project="${p.id}">详情</button><button class="btn small" data-follow-project="${p.id}">跟进</button>${projectFollowMenuId===p.id?`<div class="card" style="position:absolute; z-index:20; margin-top:6px; padding:8px;"><div class="row"><button class="btn small" data-follow-done-project="${p.id}">跟进完成</button><button class="btn small" data-follow-delay1-project="${p.id}">延后明天</button><button class="btn small" data-follow-delay3-project="${p.id}">延后3天</button><button class="btn small" data-follow-delay7-project="${p.id}">延后7天</button><button class="btn small" data-follow-custom-project="${p.id}">自定义日期</button><button class="btn small" data-close-follow-menu>关闭</button></div></div>`:''}<button class="btn small" data-edit-project="${p.id}">编辑</button>${(p.workStatus==='已完成'||p.stage==='关闭')?`<button class="btn small" data-archive-project="${p.id}">归档</button>`:''}${p.workStatus==='已归档'?`<button class="btn small" data-restore-project="${p.id}">恢复</button>`:''}</td>
       </tr>`).join('') : '<tr><td colspan="7" class="empty">暂无项目</td></tr>'}
       </tbody></table></div>
       <div class="card"><div class="row">
@@ -651,6 +661,7 @@
       else if (type === '今天') { projectStatusFilter = '全部'; projectKeyword=''; projectSort='下次跟进日期(近->远)'; data.projects = data.projects.map(p => p); }
       else if (type === '本周') { projectStatusFilter = '全部'; projectSort='下次跟进日期(近->远)'; }
       else if (type === '逾期') { projectStatusFilter = '全部'; projectSort='下次跟进日期(近->远)'; }
+      else if (type === '未归档') { showArchiveProjects = false; projectStatusFilter = '默认'; }
       else { projectStatusFilter = '默认'; showArchiveProjects = false; projectSort='智能优先(逾期/今天/本周/最近更新)'; }
       projectPage = 1;
       if (type === '今天') projectKeyword = `[TODAY:${today}]`;
@@ -671,6 +682,8 @@
     box.querySelectorAll('[data-follow-delay7-project]').forEach(el => el.onclick = () => markProjectFollow(el.dataset.followDelay7Project, 'plus7'));
     box.querySelectorAll('[data-follow-custom-project]').forEach(el => el.onclick = () => markProjectFollow(el.dataset.followCustomProject, 'custom'));
     box.querySelectorAll('[data-close-follow-menu]').forEach(el => el.onclick = () => { projectFollowMenuId = ''; renderProjects(); });
+    box.querySelectorAll('[data-archive-project]').forEach(el => el.onclick = () => archiveProject(el.dataset.archiveProject));
+    box.querySelectorAll('[data-restore-project]').forEach(el => el.onclick = () => restoreProject(el.dataset.restoreProject));
   }
 
   function statusColor(status) {
@@ -781,7 +794,10 @@
       const passOwn = qualityOwnerFilter === '全部' || i.responsibility === qualityOwnerFilter;
       const passArc = qualityArchiveFilter === '全部' ? true : (qualityArchiveFilter === '已归档' ? !!i.archived : !i.archived);
       const passView = showQualityArchived ? !!i.archived : true;
-      return passQ && passC && passS && passSrc && passOwn && passArc && passView;
+      const passQuick = qualityQuickMode === '未关闭' ? !(i.status==='已关闭' || i.isClosed)
+        : qualityQuickMode === '已关闭' ? (i.status==='已关闭' || i.isClosed)
+        : true;
+      return passQ && passC && passS && passSrc && passOwn && passArc && passView && passQuick;
     }).sort((a,b) => {
       if (qualitySort === '截止日期(近->远)') return (a.deadline || '9999-12-31').localeCompare(b.deadline || '9999-12-31');
       if (qualitySort === '创建时间(新->旧)') return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
@@ -791,7 +807,7 @@
     const totalPages = Math.max(1, Math.ceil(total / qualityPageSize));
     if (qualityPage > totalPages) qualityPage = totalPages;
     const list = filtered.slice((qualityPage - 1) * qualityPageSize, qualityPage * qualityPageSize);
-    box.innerHTML = `<div class="card"><div class="row"><input id="qualitySearch" class="grow" placeholder="搜索：投诉号/客户/问题标题/电机型号" value="${escapeHtml(qualityKeyword)}" /><select id="qualityCustomerSel" style="max-width:150px">${customerOptions}</select><select id="qualityStatusSel" style="max-width:130px">${['全部',...QUALITY_STATUS].map(s=>`<option ${qualityStatusFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualitySourceSel" style="max-width:130px">${['全部',...QUALITY_SOURCES].map(s=>`<option ${qualitySourceFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualityOwnerSel" style="max-width:130px">${['全部',...QUALITY_OWNERS].map(s=>`<option ${qualityOwnerFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualityArchiveSel" style="max-width:120px">${['未归档','已归档','全部'].map(s=>`<option ${qualityArchiveFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualitySortSel" style="max-width:150px">${['更新时间(新->旧)','截止日期(近->远)','创建时间(新->旧)'].map(s=>`<option ${qualitySort===s?'selected':''}>${s}</option>`).join('')}</select><button class="btn" id="qualityArchiveToggle">${showQualityArchived?'返回未归档':'查看归档质量问题'}</button><button class="btn primary" id="newQualityBtn">新增质量问题</button></div></div>
+    box.innerHTML = `<div class="card"><div class="row"><input id="qualitySearch" class="grow" placeholder="搜索：投诉号/客户/问题标题/电机型号" value="${escapeHtml(qualityKeyword)}" /><select id="qualityCustomerSel" style="max-width:150px">${customerOptions}</select><select id="qualityStatusSel" style="max-width:130px">${['全部',...QUALITY_STATUS].map(s=>`<option ${qualityStatusFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualitySourceSel" style="max-width:130px">${['全部',...QUALITY_SOURCES].map(s=>`<option ${qualitySourceFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualityOwnerSel" style="max-width:130px">${['全部',...QUALITY_OWNERS].map(s=>`<option ${qualityOwnerFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualityArchiveSel" style="max-width:120px">${['未归档','已归档','全部'].map(s=>`<option ${qualityArchiveFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualitySortSel" style="max-width:150px">${['更新时间(新->旧)','截止日期(近->远)','创建时间(新->旧)'].map(s=>`<option ${qualitySort===s?'selected':''}>${s}</option>`).join('')}</select><button class="btn" id="qualityArchiveToggle">${showQualityArchived?'返回未归档':'查看归档质量问题'}</button><button class="btn primary" id="newQualityBtn">新增质量问题</button></div><div class="row"><span class="muted">快捷筛选：</span><button class="btn small" data-qf-quality="未关闭">未关闭</button><button class="btn small" data-qf-quality="已关闭">已关闭</button><button class="btn small" data-qf-quality="已归档">已归档</button><button class="btn small" data-qf-quality="重置">重置</button></div></div>
     <div class="card"><table><thead><tr><th>投诉号</th><th>客户</th><th>电机型号</th><th>问题标题</th><th>来源/归属</th><th>状态</th><th>截止日期</th><th>操作</th></tr></thead><tbody>${list.length ? list.map(i => `<tr><td>${escapeHtml(i.complaintNo||'-')}</td><td>${escapeHtml(i.customerName||'-')}</td><td>${escapeHtml(i.motorModel||'-')}</td><td>${escapeHtml(i.title||'-')}</td><td>${escapeHtml((i.source||'-') + ' / ' + (i.responsibility||'-'))}</td><td>${escapeHtml(i.status||'-')}</td><td>${escapeHtml(i.deadline||'-')}</td><td><button class="btn small" data-follow-quality="${i.id}">跟进</button><button class="btn small" data-addrec-quality="${i.id}">添加记录</button>${i.archived?`<button class="btn small" data-restore-quality="${i.id}">恢复</button>`:`${i.status==='已关闭'||i.isClosed?`<button class="btn small" data-archive-quality="${i.id}">归档</button>`:''}`}<button class="btn small" data-edit-quality="${i.id}">编辑</button><button class="btn small danger" data-del-quality="${i.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="8" class="empty">暂无质量问题记录</td></tr>'}</tbody></table></div>
     <div class="card"><div class="row"><span class="muted">总质量问题：${total}</span><label style="margin:0;">每页<select id="qualityPageSizeSel" style="width:90px; margin-left:6px;">${[10,20,50,100].map(n => `<option value="${n}" ${qualityPageSize===n?'selected':''}>${n}</option>`).join('')}</select></label><button class="btn small" id="qualityPrevPage" ${qualityPage<=1?'disabled':''}>上一页</button><span class="muted">第 ${qualityPage} / ${totalPages} 页</span><button class="btn small" id="qualityNextPage" ${qualityPage>=totalPages?'disabled':''}>下一页</button></div></div>`;
     document.getElementById('qualitySearch').oninput = e => { qualityKeyword = e.target.value; qualityPage = 1; renderQuality(); };
@@ -817,6 +833,14 @@
     box.querySelectorAll('[data-archive-quality]').forEach(el => el.onclick = () => { data.qualityIssues = data.qualityIssues.map(i => i.id===el.dataset.archiveQuality ? { ...i, archived:true, updatedAt:now() } : i); save(); renderQuality(); });
     box.querySelectorAll('[data-restore-quality]').forEach(el => el.onclick = () => { data.qualityIssues = data.qualityIssues.map(i => i.id===el.dataset.restoreQuality ? { ...i, archived:false, updatedAt:now() } : i); save(); renderQuality(); });
     box.querySelectorAll('[data-del-quality]').forEach(el => el.onclick = () => { if (!confirm('确定删除该质量问题记录吗？')) return; data.qualityIssues = data.qualityIssues.filter(x => x.id !== el.dataset.delQuality); save(); renderAll(); });
+    box.querySelectorAll('[data-qf-quality]').forEach(btn => btn.onclick = () => {
+      const t = btn.dataset.qfQuality;
+      if (t === '未关闭') { qualityQuickMode = '未关闭'; qualityStatusFilter = '全部'; qualityArchiveFilter='未归档'; showQualityArchived=false; }
+      else if (t === '已关闭') { qualityQuickMode = '已关闭'; qualityStatusFilter = '全部'; qualityArchiveFilter='未归档'; showQualityArchived=false; }
+      else if (t === '已归档') { qualityQuickMode = ''; qualityArchiveFilter='已归档'; showQualityArchived=true; }
+      else { qualityQuickMode=''; qualityStatusFilter='全部'; qualityArchiveFilter='未归档'; showQualityArchived=false; }
+      qualityPage = 1; renderQuality();
+    });
   }
 
   function openQualityForm(id='') {
@@ -846,7 +870,11 @@
       const passF = shipmentFeedbackFilter === '全部' || (shipmentFeedbackFilter === '已反馈' ? !!s.receivedFeedback : !s.receivedFeedback);
       const passA = shipmentArchiveFilter === '全部' ? true : (shipmentArchiveFilter === '已归档' ? !!s.archived : !s.archived);
       const passView = showShipmentArchived ? !!s.archived : true;
-      return passQ && passC && passS && passF && passA && passView;
+      const passQuick = shipmentQuickMode === '待发货' ? s.status==='待发货'
+        : shipmentQuickMode === '测试中' ? s.status==='测试中'
+        : shipmentQuickMode === '已完成' ? s.status==='已完成'
+        : true;
+      return passQ && passC && passS && passF && passA && passView && passQuick;
     }).sort((a,b) => {
       if (shipmentSort === '发货日期(近->远)') return (a.shipDate || '9999-12-31').localeCompare(b.shipDate || '9999-12-31');
       if (shipmentSort === '创建时间(新->旧)') return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
@@ -856,7 +884,7 @@
     const totalPages = Math.max(1, Math.ceil(total / shipmentPageSize));
     if (shipmentPage > totalPages) shipmentPage = totalPages;
     const list = filtered.slice((shipmentPage - 1) * shipmentPageSize, shipmentPage * shipmentPageSize);
-    box.innerHTML = `<div class="card"><div class="row"><input id="shipmentSearch" class="grow" placeholder="搜索：编号/类型/发货地/收货地/客户/项目/型号/快递单号" value="${escapeHtml(shipmentKeyword)}" /><select id="shipmentCustomerSel" style="max-width:150px">${customerOptions}</select><select id="shipmentStatusSel" style="max-width:130px">${['全部',...SHIPMENT_STATUS].map(s=>`<option ${shipmentStatusFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="shipmentFeedbackSel" style="max-width:120px">${['全部','已反馈','未反馈'].map(s=>`<option ${shipmentFeedbackFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="shipmentArchiveSel" style="max-width:120px">${['未归档','已归档','全部'].map(s=>`<option ${shipmentArchiveFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="shipmentSortSel" style="max-width:150px">${['更新时间(新->旧)','发货日期(近->远)','创建时间(新->旧)'].map(s=>`<option ${shipmentSort===s?'selected':''}>${s}</option>`).join('')}</select><button class="btn" id="shipmentArchiveToggle">${showShipmentArchived?'返回未归档':'查看归档发货记录'}</button><button class="btn primary" id="newShipmentBtn">新增发货记录</button></div></div>
+    box.innerHTML = `<div class="card"><div class="row"><input id="shipmentSearch" class="grow" placeholder="搜索：编号/类型/发货地/收货地/客户/项目/型号/快递单号" value="${escapeHtml(shipmentKeyword)}" /><select id="shipmentCustomerSel" style="max-width:150px">${customerOptions}</select><select id="shipmentStatusSel" style="max-width:130px">${['全部',...SHIPMENT_STATUS].map(s=>`<option ${shipmentStatusFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="shipmentFeedbackSel" style="max-width:120px">${['全部','已反馈','未反馈'].map(s=>`<option ${shipmentFeedbackFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="shipmentArchiveSel" style="max-width:120px">${['未归档','已归档','全部'].map(s=>`<option ${shipmentArchiveFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="shipmentSortSel" style="max-width:150px">${['更新时间(新->旧)','发货日期(近->远)','创建时间(新->旧)'].map(s=>`<option ${shipmentSort===s?'selected':''}>${s}</option>`).join('')}</select><button class="btn" id="shipmentArchiveToggle">${showShipmentArchived?'返回未归档':'查看归档发货记录'}</button><button class="btn primary" id="newShipmentBtn">新增发货记录</button></div><div class="row"><span class="muted">快捷筛选：</span><button class="btn small" data-qf-shipment="待发货">待发货</button><button class="btn small" data-qf-shipment="测试中">测试中</button><button class="btn small" data-qf-shipment="已完成">已完成</button><button class="btn small" data-qf-shipment="已归档">已归档</button><button class="btn small" data-qf-shipment="重置">重置</button></div></div>
     <div class="card"><table><thead><tr><th>发货编号</th><th>发货类型</th><th>发货地→收货地</th><th>客户</th><th>项目</th><th>型号</th><th>数量</th><th>发货日期</th><th>状态</th><th>是否收到反馈</th><th>操作</th></tr></thead><tbody>${list.length ? list.map(s => `<tr><td>${escapeHtml(s.shipmentNo||'-')}</td><td>${escapeHtml(s.shipmentType||'-')}</td><td>${escapeHtml((s.shipFrom||'-') + ' → ' + (s.shipTo||'-'))}</td><td>${escapeHtml(s.customerName||'-')}</td><td>${escapeHtml(s.projectName||'-')}</td><td>${escapeHtml(s.model||'-')}</td><td>${escapeHtml(s.qty||'-')}</td><td>${escapeHtml(s.shipDate||'-')}</td><td>${escapeHtml(s.status||'-')}</td><td>${s.receivedFeedback?'是':'否'}</td><td><button class="btn small" data-follow-shipment="${s.id}">跟进</button><button class="btn small" data-addrec-shipment="${s.id}">添加记录</button>${s.archived?`<button class="btn small" data-restore-shipment="${s.id}">恢复</button>`:`${['测试完成','已完成'].includes(s.status)?`<button class="btn small" data-archive-shipment="${s.id}">归档</button>`:''}`}<button class="btn small" data-edit-shipment="${s.id}">编辑</button><button class="btn small danger" data-del-shipment="${s.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="11" class="empty">暂无样机发货记录</td></tr>'}</tbody></table></div>
     <div class="card"><div class="row"><span class="muted">总发货记录：${total}</span><label style="margin:0;">每页<select id="shipmentPageSizeSel" style="width:90px; margin-left:6px;">${[10,20,50,100].map(n => `<option value="${n}" ${shipmentPageSize===n?'selected':''}>${n}</option>`).join('')}</select></label><button class="btn small" id="shipmentPrevPage" ${shipmentPage<=1?'disabled':''}>上一页</button><span class="muted">第 ${shipmentPage} / ${totalPages} 页</span><button class="btn small" id="shipmentNextPage" ${shipmentPage>=totalPages?'disabled':''}>下一页</button></div></div>`;
     document.getElementById('shipmentSearch').oninput = e => { shipmentKeyword = e.target.value; shipmentPage=1; renderShipments(); };
@@ -881,6 +909,13 @@
     box.querySelectorAll('[data-restore-shipment]').forEach(el => el.onclick = () => { data.shipments = data.shipments.map(s => s.id===el.dataset.restoreShipment ? { ...s, archived:false, updatedAt:now() } : s); save(); renderShipments(); });
     box.querySelectorAll('[data-edit-shipment]').forEach(el => el.onclick = () => openShipmentForm(el.dataset.editShipment));
     box.querySelectorAll('[data-del-shipment]').forEach(el => el.onclick = () => { if (!confirm('确定删除该发货记录吗？')) return; data.shipments = data.shipments.filter(x => x.id !== el.dataset.delShipment); save(); renderAll(); });
+    box.querySelectorAll('[data-qf-shipment]').forEach(btn => btn.onclick = () => {
+      const t = btn.dataset.qfShipment;
+      if (['待发货','测试中','已完成'].includes(t)) { shipmentQuickMode=t; shipmentArchiveFilter='未归档'; showShipmentArchived=false; }
+      else if (t === '已归档') { shipmentQuickMode=''; shipmentArchiveFilter='已归档'; showShipmentArchived=true; }
+      else { shipmentQuickMode=''; shipmentStatusFilter='全部'; shipmentArchiveFilter='未归档'; showShipmentArchived=false; }
+      shipmentPage = 1; renderShipments();
+    });
   }
 
   function openShipmentForm(id='') {
