@@ -26,10 +26,12 @@
     table { width:100%; border-collapse:collapse; }
     th,td { border-bottom:1px solid var(--line); padding:10px 8px; text-align:left; vertical-align:top; }
     th { background:#f8fafc; }
+    .table-compact { table-layout: fixed; }
     .table-compact th, .table-compact td { white-space: nowrap; padding:6px 6px; font-size:13px; }
     .proj-name { font-weight: 600; }
     .subline { margin-top:2px; color:var(--muted); font-size:11px; }
     .ellipsis { max-width:360px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; white-space:normal; line-height:1.2; }
+    .one-line { display:block; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .small-time { font-size:12px; color:var(--muted); }
     .empty { color:var(--muted); text-align:center; padding:16px; }
     .grid-2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:10px; }
@@ -621,13 +623,13 @@
         <button class="btn" id="archiveToggleBtn">${showArchiveProjects ? '返回主项目' : '查看归档项目'}</button>
         <button class="btn primary" id="newProjectBtn">新增项目</button>
       </div><div class="row"><span class="muted">快捷筛选：</span><button class="btn small" data-qf="进行中">进行中</button><button class="btn small" data-qf="今天">今天要跟进</button><button class="btn small" data-qf="本周">本周要跟进</button><button class="btn small" data-qf="逾期">已逾期</button><button class="btn small" data-qf="已归档">已归档</button><button class="btn small" data-qf="未归档">未归档</button><button class="btn small" data-qf="重置">重置</button></div></div>
-      <div class="card"><table class="table-compact"><thead><tr><th>客户</th><th>项目名称</th><th>当前状态</th><th>下一步动作</th><th>下次跟进日期</th><th>最近更新时间</th><th>操作</th></tr></thead><tbody>
+      <div class="card"><table class="table-compact"><thead><tr><th>客户</th><th>项目名称</th><th>当前状态</th><th>当前进展摘要</th><th>下次跟进日期</th><th>最近更新时间</th><th>操作</th></tr></thead><tbody>
       ${rows.length ? rows.map(p => `<tr>
         <td>${escapeHtml(customerName(p.customerId))}</td>
         <td><div class="proj-name">${escapeHtml(p.name)}</div><div class="subline">优先级：<span class="badge" style="background:${p.priority==='高'?'#dc2626':(p.priority==='中'?'#b45309':'#475569')}">${escapeHtml(p.priority||'中')}</span></div></td>
         <td><span class="badge" style="background:${statusColor(p.workStatus)}">${escapeHtml(p.workStatus||'进行中')}</span></td>
-        <td><span class="ellipsis">${escapeHtml(p.currentProgress||'-')}</span><div class="subline">下一步：${escapeHtml(p.nextAction||'-')}</div></td><td>${escapeHtml(p.nextFollowDate||'-')}</td><td><span class="small-time">${fmt(p.updatedAt)}</span></td>
-        <td style="min-width:220px"><button class="btn small" data-view-project="${p.id}">详情</button><button class="btn small" data-follow-project="${p.id}">跟进</button>${projectFollowMenuId===p.id?`<div class="card" style="position:absolute; z-index:20; margin-top:6px; padding:8px;"><div class="row"><button class="btn small" data-follow-done-project="${p.id}">跟进完成</button><button class="btn small" data-follow-delay1-project="${p.id}">延后明天</button><button class="btn small" data-follow-delay3-project="${p.id}">延后3天</button><button class="btn small" data-follow-delay7-project="${p.id}">延后7天</button><button class="btn small" data-follow-custom-project="${p.id}">自定义日期</button><button class="btn small" data-close-follow-menu>关闭</button></div></div>`:''}<button class="btn small" data-edit-project="${p.id}">编辑</button>${p.workStatus==='已归档'?`<button class="btn small" data-restore-project="${p.id}">恢复</button>`:`<button class="btn small" data-archive-project="${p.id}">归档</button>`}</td>
+        <td><span class="one-line">${escapeHtml(p.currentProgress||'-')}</span></td><td>${escapeHtml(p.nextFollowDate||'-')}</td><td><span class="small-time">${fmt(p.updatedAt)}</span></td>
+        <td style="width:240px; position:relative;"><button class="btn small" data-view-project="${p.id}">详情</button><button class="btn small" data-follow-project="${p.id}">跟进</button>${projectFollowMenuId===p.id?`<div class="card" style="position:absolute; right:0; z-index:20; margin-top:6px; padding:8px;"><div class="row"><button class="btn small" data-follow-done-project="${p.id}">跟进完成</button><button class="btn small" data-follow-delay1-project="${p.id}">延后明天</button><button class="btn small" data-follow-delay3-project="${p.id}">延后3天</button><button class="btn small" data-follow-delay7-project="${p.id}">延后7天</button><button class="btn small" data-follow-custom-project="${p.id}">自定义日期</button><button class="btn small" data-close-follow-menu>关闭</button></div></div>`:''}<button class="btn small" data-edit-project="${p.id}">编辑</button>${p.workStatus==='已归档'?`<button class="btn small" data-restore-project="${p.id}">恢复</button>`:`<button class="btn small" data-archive-project="${p.id}">归档</button>`}</td>
       </tr>`).join('') : '<tr><td colspan="7" class="empty">暂无项目</td></tr>'}
       </tbody></table></div>
       <div class="card"><div class="row">
