@@ -111,6 +111,7 @@
   let showArchiveProjects = false;
   let activeCustomerId = '';
   let activeProjectId = '';
+  let projectFollowMenuId = '';
   let qualityKeyword = '';
   let qualityPage = 1;
   let qualityPageSize = 20;
@@ -377,6 +378,7 @@
     return base.toISOString().slice(0,10);
   }
   function markProjectFollow(id, mode='today') {
+    projectFollowMenuId = '';
     const today = new Date().toISOString().slice(0,10);
     data.projects = data.projects.map(p => {
       if (p.id !== id) return p;
@@ -393,6 +395,21 @@
       const isTodayPending = p.nextFollowDate === today && !p.followDone;
       return isTodayPending ? { ...p, followDone:true, updatedAt: now() } : { ...p, nextFollowDate:today, followDone:false, updatedAt: now() };
     });
+    save(); renderAll();
+  }
+  function completeProject(id) {
+    data.projects = data.projects.map(p => p.id===id ? { ...p, workStatus:'已完成', completeDate:new Date().toISOString().slice(0,10), updatedAt: now() } : p);
+    save(); renderAll();
+  }
+  function deleteProject(id) {
+    if (!confirm('确定删除该项目吗？')) return;
+    data.projects = data.projects.filter(p => p.id !== id);
+    save(); renderAll();
+  }
+  function addProjectRecord(id) {
+    const note = prompt('输入项目跟进记录（可选）：');
+    if (!note) return;
+    data.projects = data.projects.map(p => p.id===id ? { ...appendSimpleLog(p, note), followUps:[{ id: uid(), date: new Date().toISOString().slice(0,10), content: note, createdAt: now() }, ...(p.followUps||[])] } : p);
     save(); renderAll();
   }
   function notifyTodayFollow(todayProjects) {
@@ -600,7 +617,7 @@
         <td><div class="proj-name">${escapeHtml(p.name)}</div><div class="subline">优先级：<span class="badge" style="background:${p.priority==='高'?'#dc2626':(p.priority==='中'?'#b45309':'#475569')}">${escapeHtml(p.priority||'中')}</span></div></td>
         <td><span class="badge" style="background:${statusColor(p.workStatus)}">${escapeHtml(p.workStatus||'进行中')}</span></td>
         <td><span class="ellipsis">${escapeHtml(p.nextAction||'-')}</span></td><td>${escapeHtml(p.nextFollowDate||'-')}</td><td><span class="small-time">${fmt(p.updatedAt)}</span></td>
-        <td>${!['已完成','已归档'].includes(p.workStatus||'进行中') ? `<button class="btn small" data-complete-project="${p.id}">标记完成</button>` : ''}<button class="btn small" data-view-project="${p.id}">详情</button><button class="btn small" data-follow-project="${p.id}">跟进</button><button class="btn small" data-follow-done-project="${p.id}">跟进完成</button><button class="btn small" data-follow-delay1-project="${p.id}">延后明天</button><button class="btn small" data-follow-delay3-project="${p.id}">延后3天</button><button class="btn small" data-follow-delay7-project="${p.id}">延后7天</button><button class="btn small" data-follow-custom-project="${p.id}">自定义日期</button><button class="btn small" data-addrec-project="${p.id}">添加记录</button><button class="btn small" data-copy-project="${p.id}">复制</button><button class="btn small" data-edit-project="${p.id}">编辑</button><button class="btn small danger" data-del-project="${p.id}">删除</button></td>
+        <td style="min-width:220px"><button class="btn small" data-view-project="${p.id}">详情</button><button class="btn small" data-follow-project="${p.id}">跟进</button>${projectFollowMenuId===p.id?`<div class="card" style="position:absolute; z-index:20; margin-top:6px; padding:8px;"><div class="row"><button class="btn small" data-follow-done-project="${p.id}">跟进完成</button><button class="btn small" data-follow-delay1-project="${p.id}">延后明天</button><button class="btn small" data-follow-delay3-project="${p.id}">延后3天</button><button class="btn small" data-follow-delay7-project="${p.id}">延后7天</button><button class="btn small" data-follow-custom-project="${p.id}">自定义日期</button><button class="btn small" data-close-follow-menu>关闭</button></div></div>`:''}<button class="btn small" data-edit-project="${p.id}">编辑</button></td>
       </tr>`).join('') : '<tr><td colspan="7" class="empty">暂无项目</td></tr>'}
       </tbody></table></div>
       <div class="card"><div class="row">
@@ -647,31 +664,13 @@
 
     box.querySelectorAll('[data-edit-project]').forEach(el => el.onclick = () => openProjectForm(el.dataset.editProject));
     box.querySelectorAll('[data-view-project]').forEach(el => el.onclick = () => openProjectDetail(el.dataset.viewProject));
-    box.querySelectorAll('[data-copy-project]').forEach(el => el.onclick = () => openProjectForm('', '', el.dataset.copyProject));
-    box.querySelectorAll('[data-follow-project]').forEach(el => el.onclick = () => markProjectFollow(el.dataset.followProject, 'today'));
+    box.querySelectorAll('[data-follow-project]').forEach(el => el.onclick = () => { projectFollowMenuId = el.dataset.followProject; renderProjects(); });
     box.querySelectorAll('[data-follow-done-project]').forEach(el => el.onclick = () => markProjectFollow(el.dataset.followDoneProject, 'done'));
     box.querySelectorAll('[data-follow-delay1-project]').forEach(el => el.onclick = () => markProjectFollow(el.dataset.followDelay1Project, 'tomorrow'));
     box.querySelectorAll('[data-follow-delay3-project]').forEach(el => el.onclick = () => markProjectFollow(el.dataset.followDelay3Project, 'plus3'));
     box.querySelectorAll('[data-follow-delay7-project]').forEach(el => el.onclick = () => markProjectFollow(el.dataset.followDelay7Project, 'plus7'));
     box.querySelectorAll('[data-follow-custom-project]').forEach(el => el.onclick = () => markProjectFollow(el.dataset.followCustomProject, 'custom'));
-    box.querySelectorAll('[data-addrec-project]').forEach(el => el.onclick = () => {
-      const note = prompt('输入项目跟进记录（可选）：');
-      if (!note) return;
-      data.projects = data.projects.map(p => p.id===el.dataset.addrecProject ? { ...appendSimpleLog(p, note), followUps:[{ id: uid(), date: new Date().toISOString().slice(0,10), content: note, createdAt: now() }, ...(p.followUps||[])] } : p);
-      save(); renderProjects();
-    });
-    box.querySelectorAll('[data-complete-project]').forEach(el => el.onclick = () => {
-      const id = el.dataset.completeProject;
-      data.projects = data.projects.map(p => p.id===id ? { ...p, workStatus:'已完成', completeDate:new Date().toISOString().slice(0,10), updatedAt: now() } : p);
-      projectPage = 1;
-      save(); renderAll();
-    });
-    box.querySelectorAll('[data-del-project]').forEach(el => el.onclick = () => {
-      if (!confirm('确定删除该项目吗？')) return;
-      data.projects = data.projects.filter(p => p.id !== el.dataset.delProject);
-      projectPage = 1;
-      save(); renderAll();
-    });
+    box.querySelectorAll('[data-close-follow-menu]').forEach(el => el.onclick = () => { projectFollowMenuId = ''; renderProjects(); });
   }
 
   function statusColor(status) {
@@ -743,6 +742,7 @@
     const relatedShipments = data.shipments.filter(s => (s.projectName || '') === (p.name || ''));
     const followUps = p.followUps || [];
     const panel = `<div class="card" id="projectDetailCard"><div class="row"><h3 style="margin:0;">项目详情：${escapeHtml(p.name||'-')}</h3><button class="btn" id="closeProjectDetail">关闭</button></div>
+      <div class="row" style="margin-bottom:8px;"><button class="btn small" data-detail-addrec="${p.id}">添加记录</button><button class="btn small" data-detail-follow-done="${p.id}">跟进完成</button><button class="btn small" data-detail-follow-delay1="${p.id}">延后明天</button><button class="btn small" data-detail-follow-delay3="${p.id}">延后3天</button><button class="btn small" data-detail-follow-delay7="${p.id}">延后7天</button><button class="btn small" data-detail-follow-custom="${p.id}">自定义日期</button><button class="btn small" data-detail-copy="${p.id}">复制</button>${!['已完成','已归档'].includes(p.workStatus||'进行中')?`<button class="btn small" data-detail-complete="${p.id}">标记完成</button>`:''}<button class="btn small danger" data-detail-del="${p.id}">删除</button></div>
       <div class="grid2">
         <div><b>项目基本信息</b><div class="muted">项目编号：${escapeHtml(p.projectCode||'-')}</div><div class="muted">客户：${escapeHtml(customerName(p.customerId))}</div><div class="muted">产品型号：${escapeHtml(p.model||'-')} / 阶段：${escapeHtml(p.stage||'-')}</div></div>
         <div><b>状态与动作</b><div class="muted">当前状态：${escapeHtml(p.workStatus||'-')} / 优先级：${escapeHtml(p.priority||'-')}</div><div class="muted">下一步动作：${escapeHtml(p.nextAction||'-')}</div><div class="muted">下次跟进：${escapeHtml(p.nextFollowDate||'-')}</div></div>
@@ -757,6 +757,15 @@
     if (old) old.remove();
     box.insertAdjacentHTML('afterbegin', panel);
     document.getElementById('closeProjectDetail').onclick = () => document.getElementById('projectDetailCard').remove();
+    box.querySelectorAll('[data-detail-addrec]').forEach(el => el.onclick = () => addProjectRecord(el.dataset.detailAddrec));
+    box.querySelectorAll('[data-detail-follow-done]').forEach(el => el.onclick = () => markProjectFollow(el.dataset.detailFollowDone, 'done'));
+    box.querySelectorAll('[data-detail-follow-delay1]').forEach(el => el.onclick = () => markProjectFollow(el.dataset.detailFollowDelay1, 'tomorrow'));
+    box.querySelectorAll('[data-detail-follow-delay3]').forEach(el => el.onclick = () => markProjectFollow(el.dataset.detailFollowDelay3, 'plus3'));
+    box.querySelectorAll('[data-detail-follow-delay7]').forEach(el => el.onclick = () => markProjectFollow(el.dataset.detailFollowDelay7, 'plus7'));
+    box.querySelectorAll('[data-detail-follow-custom]').forEach(el => el.onclick = () => markProjectFollow(el.dataset.detailFollowCustom, 'custom'));
+    box.querySelectorAll('[data-detail-copy]').forEach(el => el.onclick = () => openProjectForm('', '', el.dataset.detailCopy));
+    box.querySelectorAll('[data-detail-complete]').forEach(el => el.onclick = () => completeProject(el.dataset.detailComplete));
+    box.querySelectorAll('[data-detail-del]').forEach(el => el.onclick = () => deleteProject(el.dataset.detailDel));
   }
 
   function renderQuality() {
