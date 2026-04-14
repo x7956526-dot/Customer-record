@@ -89,7 +89,7 @@
   const QUALITY_SOURCES = ['客户投诉','内部发现','工厂反馈','样机测试','展会反馈'];
   const QUALITY_OWNERS = ['客户端','我司工厂','供应商','待确认'];
   const SHIPMENT_STATUS = ['待发货','已发货','已签收','测试中','已完成'];
-  const SHIPMENT_TYPES = ['工厂→我这','我这→客户','工厂→客户','客户→我这','我这→工厂','内部流转','其他'];
+  const SHIPMENT_TYPES = ['工厂→我这','我这→客户','工厂→客户','客户→我这','我这→工厂','内部流转','正式订单','其他'];
   const stageColor = { 新机会:'#3b82f6',评估中:'#06b6d4',打样中:'#f59e0b',测试中:'#8b5cf6',小批量:'#6366f1',量产:'#16a34a',暂停:'#6b7280',关闭:'#dc2626' };
   const KEY = 'crm_single_file_v1';
   const now = () => new Date().toISOString();
@@ -449,6 +449,33 @@
     data[listName] = data[listName].map(x => x.id===id ? { ...x, followDone: !x.followDone, updatedAt: now() } : x);
     save(); renderAll();
   }
+  function getUnifiedPendingFollowItems() {
+    const projectItems = data.projects
+      .filter(p => !p.followDone && !['已完成','已归档'].includes(p.workStatus||''))
+      .map(p => ({
+        module: '项目',
+        title: p.name || p.projectCode || '未命名项目',
+        detail: `${customerName(p.customerId)} / ${p.followItem || p.nextAction || '待补充跟进事项'}`,
+        date: p.nextFollowDate || ''
+      }));
+    const qualityItems = data.qualityIssues
+      .filter(q => !q.followDone && !q.archived && q.status !== '已关闭')
+      .map(q => ({
+        module: '质量问题',
+        title: q.title || q.complaintNo || q.motorModel || '未命名问题',
+        detail: `${q.customerName || '未知客户'} / ${q.progressNote || q.nextStep || '待补充跟进事项'}`,
+        date: q.deadline || ''
+      }));
+    const shipmentItems = data.shipments
+      .filter(s => !s.followDone && !s.archived && s.status !== '已完成')
+      .map(s => ({
+        module: '样机发货',
+        title: s.model || s.shipmentNo || '未命名发货',
+        detail: `${s.customerName || '未知客户'} / ${s.progressNote || s.statusNote || '待补充跟进事项'}`,
+        date: s.shipDate || ''
+      }));
+    return [...projectItems, ...qualityItems, ...shipmentItems].sort((a, b) => (a.date || '9999-12-31').localeCompare(b.date || '9999-12-31'));
+  }
 
   function renderDashboard() {
     const box = document.getElementById('dashboard');
@@ -463,6 +490,7 @@
     const openQualityCount = data.qualityIssues.filter(q => q.status !== '已关闭').length;
     const pendingShipmentCount = data.shipments.filter(s => s.status === '待发货' || s.status === '已发货').length;
     const recentProjectUpdates = [...data.projects].filter(p => p.workStatus !== '已归档').sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt)).slice(0,8);
+    const unifiedPending = getUnifiedPendingFollowItems();
 
     box.innerHTML = `
       <div class="kpis">
@@ -475,6 +503,7 @@
       <div class="card"><h3 class="section-title">今天要跟进</h3>${todayFollow.length?`<ul>${todayFollow.map(p=>`<li>${escapeHtml(p.name)}（${escapeHtml(customerName(p.customerId))}）- ${escapeHtml(p.followItem||'未填写事项')}</li>`).join('')}</ul>`:'<div class="empty">今天无待跟进</div>'}</div>
       <div class="card"><h3 class="section-title">本周要跟进</h3>${weekFollow.length?`<ul>${weekFollow.map(p=>`<li>${escapeHtml(p.name)}（${escapeHtml(customerName(p.customerId))}，${escapeHtml(p.nextFollowDate)}）- ${escapeHtml(p.followItem||'未填写事项')}</li>`).join('')}</ul>`:'<div class="empty">本周暂无新增跟进</div>'}</div>
       <div class="card"><h3 class="section-title">已逾期未跟进</h3>${overdueFollow.length?`<ul>${overdueFollow.map(p=>`<li><span class="badge overdue">逾期</span> ${escapeHtml(p.name)}（${escapeHtml(customerName(p.customerId))}，应跟进日期 ${escapeHtml(p.nextFollowDate)}）- ${escapeHtml(p.followItem||'未填写事项')}</li>`).join('')}</ul>`:'<div class="empty">暂无逾期</div>'}</div>
+      <div class="card"><h3 class="section-title">待跟进事项（统一）</h3>${unifiedPending.length?`<ul>${unifiedPending.map(i=>`<li>[${escapeHtml(i.module)}] ${escapeHtml(i.title)}${i.date?`（${escapeHtml(i.date)}）`:''} - ${escapeHtml(i.detail)}</li>`).join('')}</ul>`:'<div class="empty">暂无待跟进事项</div>'}</div>
       <div class="card"><h3 class="section-title">最近更新项目</h3>${recentProjectUpdates.length?`<ul>${recentProjectUpdates.map(p=>`<li>${escapeHtml(p.name)}（${escapeHtml(customerName(p.customerId))}）- ${fmt(p.updatedAt)}</li>`).join('')}</ul>`:'<div class="empty">暂无项目更新</div>'}</div>
       <div class="card"><h3 class="section-title">项目阶段统计</h3><div class="row">${STAGES.map(s => `<span class="badge" style="background:${stageColor[s]}">${s}：${count[s]||0}</span>`).join('')}</div></div>
     `;
@@ -886,7 +915,7 @@
     if (shipmentPage > totalPages) shipmentPage = totalPages;
     const list = filtered.slice((shipmentPage - 1) * shipmentPageSize, shipmentPage * shipmentPageSize);
     box.innerHTML = `<div class="card"><div class="row"><input id="shipmentSearch" class="grow" placeholder="搜索：编号/类型/发货地/收货地/客户/项目/型号/快递单号" value="${escapeHtml(shipmentKeyword)}" /><select id="shipmentCustomerSel" style="max-width:150px">${customerOptions}</select><select id="shipmentStatusSel" style="max-width:130px">${['全部',...SHIPMENT_STATUS].map(s=>`<option ${shipmentStatusFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="shipmentFeedbackSel" style="max-width:120px">${['全部','已反馈','未反馈'].map(s=>`<option ${shipmentFeedbackFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="shipmentArchiveSel" style="max-width:120px">${['未归档','已归档','全部'].map(s=>`<option ${shipmentArchiveFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="shipmentSortSel" style="max-width:150px">${['更新时间(新->旧)','发货日期(近->远)','创建时间(新->旧)'].map(s=>`<option ${shipmentSort===s?'selected':''}>${s}</option>`).join('')}</select><button class="btn" id="shipmentArchiveToggle">${showShipmentArchived?'返回未归档':'查看归档发货记录'}</button><button class="btn primary" id="newShipmentBtn">新增发货记录</button></div><div class="row"><span class="muted">快捷筛选：</span><button class="btn small" data-qf-shipment="待发货">待发货</button><button class="btn small" data-qf-shipment="测试中">测试中</button><button class="btn small" data-qf-shipment="已完成">已完成</button><button class="btn small" data-qf-shipment="已归档">已归档</button><button class="btn small" data-qf-shipment="重置">重置</button></div></div>
-    <div class="card"><table><thead><tr><th>客户</th><th>型号</th><th>SAP物料号</th><th>数量</th><th>发货类型</th><th>发货日期</th><th>快递号</th><th>当前进展摘要</th><th>操作</th></tr></thead><tbody>${list.length ? list.map(s => `<tr><td>${escapeHtml(s.customerName||'-')}</td><td>${escapeHtml(s.model||'-')}</td><td>${escapeHtml(s.sapNo||'-')}</td><td>${escapeHtml(s.qty||'-')}</td><td>${escapeHtml(s.shipmentType||'-')}</td><td>${escapeHtml(s.shipDate||'-')}</td><td>${escapeHtml(s.trackingNo||'-')}</td><td><div class="one-line">${escapeHtml(s.progressNote||'-')}</div></td><td><button class="btn small" data-follow-shipment="${s.id}">跟进</button><button class="btn small" data-addrec-shipment="${s.id}">添加记录</button>${s.archived?`<button class="btn small" data-restore-shipment="${s.id}">恢复</button>`:`<button class="btn small" data-archive-shipment="${s.id}">归档</button>`}<button class="btn small" data-edit-shipment="${s.id}">编辑</button><button class="btn small danger" data-del-shipment="${s.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="9" class="empty">暂无样机发货记录</td></tr>'}</tbody></table></div>
+    <div class="card"><table><thead><tr><th>客户</th><th>型号</th><th>数量</th><th>发货类型</th><th>发货日期</th><th>快递号</th><th>当前进展摘要</th><th>操作</th></tr></thead><tbody>${list.length ? list.map(s => `<tr><td>${escapeHtml(s.customerName||'-')}</td><td>${escapeHtml(s.model||'-')}</td><td>${escapeHtml(s.qty||'-')}</td><td>${escapeHtml(s.shipmentType||'-')}</td><td>${escapeHtml(s.shipDate||'-')}</td><td>${escapeHtml(s.trackingNo||'-')}</td><td><div class="one-line">${escapeHtml(s.progressNote||'-')}</div></td><td><button class="btn small" data-follow-shipment="${s.id}">跟进</button><button class="btn small" data-addrec-shipment="${s.id}">添加记录</button>${s.archived?`<button class="btn small" data-restore-shipment="${s.id}">恢复</button>`:`<button class="btn small" data-archive-shipment="${s.id}">归档</button>`}<button class="btn small" data-edit-shipment="${s.id}">编辑</button><button class="btn small danger" data-del-shipment="${s.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="8" class="empty">暂无样机发货记录</td></tr>'}</tbody></table></div>
     <div class="card"><div class="row"><span class="muted">总发货记录：${total}</span><label style="margin:0;">每页<select id="shipmentPageSizeSel" style="width:90px; margin-left:6px;">${[10,20,50,100].map(n => `<option value="${n}" ${shipmentPageSize===n?'selected':''}>${n}</option>`).join('')}</select></label><button class="btn small" id="shipmentPrevPage" ${shipmentPage<=1?'disabled':''}>上一页</button><span class="muted">第 ${shipmentPage} / ${totalPages} 页</span><button class="btn small" id="shipmentNextPage" ${shipmentPage>=totalPages?'disabled':''}>下一页</button></div></div>`;
     document.getElementById('shipmentSearch').oninput = e => { shipmentKeyword = e.target.value; shipmentPage=1; renderShipments(); };
     document.getElementById('shipmentCustomerSel').onchange = e => { shipmentCustomerFilter = e.target.value; shipmentPage=1; renderShipments(); };
