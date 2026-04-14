@@ -522,12 +522,36 @@
   }
 
   function customerName(id) { const c = data.customers.find(x => x.id === id); return c ? c.name : '未知客户'; }
+  function bindSearchInput(id, onUpdate, rerender) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    let timer = 0;
+    const apply = () => { onUpdate(el.value); rerender(); };
+    el.oninput = () => {
+      onUpdate(el.value);
+      clearTimeout(timer);
+      const pos = el.selectionStart ?? el.value.length;
+      timer = setTimeout(() => {
+        const active = document.activeElement === el;
+        rerender();
+        if (!active) return;
+        setTimeout(() => {
+          const next = document.getElementById(id);
+          if (!next) return;
+          next.focus();
+          next.setSelectionRange(pos, pos);
+        }, 0);
+      }, 220);
+    };
+    el.onkeydown = (e) => { if (e.key === 'Enter') { clearTimeout(timer); apply(); } };
+    el.onchange = () => { clearTimeout(timer); apply(); };
+  }
 
   function renderCustomers() {
     const box = document.getElementById('customers');
     const filtered = data.customers.filter(c => {
       const q = customerKeyword.trim().toLowerCase();
-      return !q || [c.name,c.shortName,c.country,c.region,c.contact,c.industry,c.status].some(v => (v||'').toLowerCase().includes(q));
+      return !q || [c.name,c.shortName,c.country,c.region,c.contact,c.industry,c.application,c.status].some(v => (v||'').toLowerCase().includes(q));
     }).sort((a,b) => {
       if (customerSort === '名称') return (a.name || '').localeCompare(b.name || '', 'zh');
       if (customerSort === '创建时间(新->旧)') return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
@@ -539,11 +563,11 @@
     const list = filtered.slice((customerPage - 1) * customerPageSize, customerPage * customerPageSize);
     box.innerHTML = `
       <div class="card"><div class="row"><input class="grow" id="customerSearch" placeholder="搜索客户" value="${escapeHtml(customerKeyword)}" /><select id="customerSortSel" style="max-width:180px">${['名称','创建时间(新->旧)','更新时间(新->旧)'].map(s=>`<option ${customerSort===s?'selected':''}>${s}</option>`).join('')}</select><button class="btn primary" id="newCustomerBtn">新增客户</button></div></div>
-      <div class="card"><table><thead><tr><th>客户</th><th>国家/区域</th><th>状态</th><th>联系人</th><th>更新时间</th><th>操作</th></tr></thead><tbody>
-      ${list.length ? list.map(c => `<tr><td>${escapeHtml(c.name)}<div class="subline">${escapeHtml(c.shortName||'')}</div></td><td>${escapeHtml((c.country||'-') + (c.region?(' / '+c.region):''))}</td><td>${escapeHtml(c.status||'-')}</td><td>${escapeHtml(c.contact||'-')}</td><td>${fmt(c.updatedAt)}</td><td><button class="btn small" data-view-customer="${c.id}">详情</button><button class="btn small" data-follow-customer="${c.id}">跟进</button><button class="btn small" data-addrec-customer="${c.id}">添加记录</button><button class="btn small" data-edit-customer="${c.id}">编辑</button><button class="btn small danger" data-del-customer="${c.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">暂无客户</td></tr>'}
+      <div class="card"><table><thead><tr><th>客户</th><th>国家/区域</th><th>客户应用</th><th>状态</th><th>联系人</th><th>操作</th></tr></thead><tbody>
+      ${list.length ? list.map(c => `<tr><td>${escapeHtml(c.name)}<div class="subline">${escapeHtml(c.shortName||'')}</div></td><td>${escapeHtml((c.country||'-') + (c.region?(' / '+c.region):''))}</td><td>${escapeHtml(c.application||'-')}</td><td>${escapeHtml(c.status||'-')}</td><td>${escapeHtml(c.contact||'-')}</td><td><button class="btn small" data-view-customer="${c.id}">详情</button><button class="btn small" data-follow-customer="${c.id}">跟进</button><button class="btn small" data-addrec-customer="${c.id}">添加记录</button><button class="btn small" data-edit-customer="${c.id}">编辑</button><button class="btn small danger" data-del-customer="${c.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">暂无客户</td></tr>'}
       </tbody></table></div>
       <div class="card"><div class="row"><span class="muted">总客户：${total}</span><label style="margin:0;">每页<select id="customerPageSizeSel" style="width:90px; margin-left:6px;">${[10,20,50,100].map(n => `<option value="${n}" ${customerPageSize===n?'selected':''}>${n}</option>`).join('')}</select></label><button class="btn small" id="customerPrevPage" ${customerPage<=1?'disabled':''}>上一页</button><span class="muted">第 ${customerPage} / ${totalPages} 页</span><button class="btn small" id="customerNextPage" ${customerPage>=totalPages?'disabled':''}>下一页</button></div></div>`;
-    document.getElementById('customerSearch').oninput = e => { customerKeyword = e.target.value; customerPage = 1; renderCustomers(); };
+    bindSearchInput('customerSearch', (v) => { customerKeyword = v; customerPage = 1; }, renderCustomers);
     document.getElementById('customerSortSel').onchange = e => { customerSort = e.target.value; customerPage = 1; renderCustomers(); };
     document.getElementById('customerPageSizeSel').onchange = e => { customerPageSize = Number(e.target.value)||20; customerPage = 1; renderCustomers(); };
     document.getElementById('customerPrevPage').onclick = () => { if (customerPage > 1) { customerPage -= 1; renderCustomers(); } };
@@ -571,7 +595,7 @@
     const origin = normalizeCustomer(id ? data.customers.find(c => c.id === id) : { regNo:nextCustomerCode(),shortName:'',name:'',country:'',region:'',status:'潜在客户',contact:'',email:'',phone:'',industry:'',application:'',products:'',requirements:'',notes:'',nextFollowDate:'',followItem:'',followDone:false });
     const templateOptions = ['<option value="">复制已有客户资料（可选）</option>', ...data.customers.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`)].join('');
     const html = `<div class="card" id="customerFormCard"><h3>${id?'编辑':'新增'}客户</h3><div class="row"><select id="customerTemplateSel" style="max-width:280px">${templateOptions}</select><button class="btn" id="applyCustomerTemplate">套用模板</button></div><div class="form-grid">
-      ${field('c_reg_no','客户注册号',origin.regNo)}${field('c_short_name','客户简称',origin.shortName)}${field('c_name','客户名称',origin.name,true)}${field('c_country','所属国家',origin.country)}${field('c_region','所属区域',origin.region)}<label>客户状态<select id="c_status">${CUSTOMER_STATUS.map(s=>`<option ${origin.status===s?'selected':''}>${s}</option>`).join('')}</select></label>${field('c_contact','联系人',origin.contact)}${field('c_email','邮箱',origin.email)}${field('c_phone','电话',origin.phone)}${field('c_industry','行业',origin.industry)}${field('c_application','主要应用',origin.application)}${field('c_products','常用产品/型号',origin.products)}${field('c_requirements','特殊要求',origin.requirements,false,true)}${field('c_notes','备注',origin.notes,false,true)}${field('c_follow_date','下次跟进日期',origin.nextFollowDate)}${field('c_follow_item','跟进事项',origin.followItem)}<label><input type="checkbox" id="c_follow_done" ${origin.followDone?'checked':''}/> 跟进已完成</label>
+      ${field('c_reg_no','客户注册号',origin.regNo)}${field('c_short_name','客户简称',origin.shortName)}${field('c_name','客户名称',origin.name,true)}${field('c_country','所属国家',origin.country)}${field('c_region','所属区域',origin.region)}<label>客户状态<select id="c_status">${CUSTOMER_STATUS.map(s=>`<option ${origin.status===s?'selected':''}>${s}</option>`).join('')}</select></label>${field('c_contact','联系人',origin.contact)}${field('c_email','邮箱',origin.email)}${field('c_phone','电话',origin.phone)}${field('c_industry','行业',origin.industry)}${field('c_application','客户应用',origin.application)}${field('c_products','常用产品/型号',origin.products)}${field('c_requirements','特殊要求',origin.requirements,false,true)}${field('c_notes','备注',origin.notes,false,true)}${field('c_follow_date','下次跟进日期',origin.nextFollowDate)}${field('c_follow_item','跟进事项',origin.followItem)}<label><input type="checkbox" id="c_follow_done" ${origin.followDone?'checked':''}/> 跟进已完成</label>
     </div><div id="customerAttachWrap"></div><div class="row"><button class="btn primary" id="saveCustomer">保存</button><button class="btn" id="cancelCustomer">取消</button></div></div>`;
     const target = document.getElementById('customers');
     target.insertAdjacentHTML('afterbegin', html);
@@ -662,7 +686,7 @@
         <td>${escapeHtml(customerName(p.customerId))}</td>
         <td style="white-space:normal; word-break:break-word; line-height:1.35;"><div class="proj-name">${escapeHtml(p.name)}</div></td>
         <td style="white-space:pre-wrap; word-break:break-word; line-height:1.35;">${escapeHtml(p.nextAction||'-')}</td><td>${escapeHtml(p.nextFollowDate||'-')}</td>
-        <td style="width:240px; position:relative;"><button class="btn small" data-view-project="${p.id}">详情</button><button class="btn small" data-follow-project="${p.id}">跟进</button>${projectFollowMenuId===p.id?`<div class="card" style="position:absolute; right:0; z-index:20; margin-top:6px; padding:8px;"><div class="row"><button class="btn small" data-follow-done-project="${p.id}">跟进完成</button><button class="btn small" data-follow-delay1-project="${p.id}">延后明天</button><button class="btn small" data-follow-delay3-project="${p.id}">延后3天</button><button class="btn small" data-follow-delay7-project="${p.id}">延后7天</button><button class="btn small" data-follow-custom-project="${p.id}">自定义日期</button><button class="btn small" data-close-follow-menu>关闭</button></div></div>`:''}<button class="btn small" data-edit-project="${p.id}">编辑</button>${p.workStatus==='已归档'?`<button class="btn small" data-restore-project="${p.id}">恢复</button>`:`<button class="btn small" data-archive-project="${p.id}">归档</button>`}</td>
+        <td style="width:240px; position:relative;"><button class="btn small" data-view-project="${p.id}">详情</button><button class="btn small" data-follow-project="${p.id}">跟进</button>${projectFollowMenuId===p.id?`<div class="card" style="position:absolute; right:0; z-index:20; margin-top:6px; padding:8px;"><div class="row"><button class="btn small" data-follow-done-project="${p.id}">跟进完成</button><button class="btn small" data-follow-delay1-project="${p.id}">延后明天</button><button class="btn small" data-follow-delay3-project="${p.id}">延后3天</button><button class="btn small" data-follow-delay7-project="${p.id}">延后7天</button><button class="btn small" data-follow-custom-project="${p.id}">自定义日期</button><button class="btn small" data-close-follow-menu>关闭</button></div></div>`:''}<button class="btn small" data-edit-project="${p.id}">编辑</button>${p.workStatus==='已归档'?`<button class="btn small" data-restore-project="${p.id}">恢复</button>`:`<button class="btn small" data-archive-project="${p.id}">归档</button>`}<button class="btn small danger" data-del-project="${p.id}">删除</button></td>
       </tr>`).join('') : '<tr><td colspan="5" class="empty">暂无项目</td></tr>'}
       </tbody></table></div>
       <div class="card"><div class="row">
@@ -677,7 +701,7 @@
         <button class="btn small" id="projectNextPage" ${projectPage>=totalPages?'disabled':''}>下一页</button>
       </div></div>`;
 
-    document.getElementById('projectSearch').oninput = e => { projectKeyword = e.target.value; projectPage = 1; renderProjects(); };
+    bindSearchInput('projectSearch', (v) => { projectKeyword = v; projectPage = 1; }, renderProjects);
     document.getElementById('projectCustomerSel').onchange = e => { projectCustomerFilter = e.target.value; projectPage = 1; renderProjects(); };
     document.getElementById('projectStatusSel').onchange = e => { projectStatusFilter = e.target.value; projectPage = 1; renderProjects(); };
     document.getElementById('projectPrioritySel').onchange = e => { projectPriorityFilter = e.target.value; projectPage = 1; renderProjects(); };
@@ -710,6 +734,11 @@
 
     box.querySelectorAll('[data-edit-project]').forEach(el => el.onclick = () => openProjectForm(el.dataset.editProject));
     box.querySelectorAll('[data-view-project]').forEach(el => el.onclick = () => openProjectDetail(el.dataset.viewProject));
+    box.querySelectorAll('[data-del-project]').forEach(el => el.onclick = () => {
+      if (!confirm('确定删除该项目吗？')) return;
+      data.projects = data.projects.filter(p => p.id !== el.dataset.delProject);
+      save(); renderProjects();
+    });
     box.querySelectorAll('[data-follow-project]').forEach(el => el.onclick = () => { projectFollowMenuId = el.dataset.followProject; renderProjects(); });
     box.querySelectorAll('[data-follow-done-project]').forEach(el => el.onclick = () => markProjectFollow(el.dataset.followDoneProject, 'done'));
     box.querySelectorAll('[data-follow-delay1-project]').forEach(el => el.onclick = () => markProjectFollow(el.dataset.followDelay1Project, 'tomorrow'));
@@ -845,7 +874,7 @@
     box.innerHTML = `<div class="card"><div class="row"><input id="qualitySearch" class="grow" placeholder="搜索：投诉号/客户/问题标题/电机型号" value="${escapeHtml(qualityKeyword)}" /><select id="qualityCustomerSel" style="max-width:150px">${customerOptions}</select><select id="qualityStatusSel" style="max-width:130px">${['全部',...QUALITY_STATUS].map(s=>`<option ${qualityStatusFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualitySourceSel" style="max-width:130px">${['全部',...QUALITY_SOURCES].map(s=>`<option ${qualitySourceFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualityOwnerSel" style="max-width:130px">${['全部',...QUALITY_OWNERS].map(s=>`<option ${qualityOwnerFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualityArchiveSel" style="max-width:120px">${['未归档','已归档','全部'].map(s=>`<option ${qualityArchiveFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="qualitySortSel" style="max-width:150px">${['更新时间(新->旧)','截止日期(近->远)','创建时间(新->旧)'].map(s=>`<option ${qualitySort===s?'selected':''}>${s}</option>`).join('')}</select><button class="btn" id="qualityArchiveToggle">${showQualityArchived?'返回未归档':'查看归档质量问题'}</button><button class="btn primary" id="newQualityBtn">新增质量问题</button></div><div class="row"><span class="muted">快捷筛选：</span><button class="btn small" data-qf-quality="未关闭">未关闭</button><button class="btn small" data-qf-quality="已关闭">已关闭</button><button class="btn small" data-qf-quality="已归档">已归档</button><button class="btn small" data-qf-quality="重置">重置</button></div></div>
     <div class="card"><table><thead><tr><th>客户</th><th>电机型号</th><th>问题标题</th><th>当前进展摘要</th><th>截止日期</th><th>操作</th></tr></thead><tbody>${list.length ? list.map(i => `<tr><td>${escapeHtml(i.customerName||'-')}</td><td>${escapeHtml(i.motorModel||'-')}</td><td>${escapeHtml(i.title||'-')}</td><td><div class="one-line">${escapeHtml(i.progressNote||'-')}</div></td><td>${escapeHtml(i.deadline||'-')}</td><td><button class="btn small" data-follow-quality="${i.id}">跟进</button><button class="btn small" data-addrec-quality="${i.id}">添加记录</button>${i.archived?`<button class="btn small" data-restore-quality="${i.id}">恢复</button>`:`<button class="btn small" data-archive-quality="${i.id}">归档</button>`}<button class="btn small" data-edit-quality="${i.id}">编辑</button><button class="btn small danger" data-del-quality="${i.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty">暂无质量问题记录</td></tr>'}</tbody></table></div>
     <div class="card"><div class="row"><span class="muted">总质量问题：${total}</span><label style="margin:0;">每页<select id="qualityPageSizeSel" style="width:90px; margin-left:6px;">${[10,20,50,100].map(n => `<option value="${n}" ${qualityPageSize===n?'selected':''}>${n}</option>`).join('')}</select></label><button class="btn small" id="qualityPrevPage" ${qualityPage<=1?'disabled':''}>上一页</button><span class="muted">第 ${qualityPage} / ${totalPages} 页</span><button class="btn small" id="qualityNextPage" ${qualityPage>=totalPages?'disabled':''}>下一页</button></div></div>`;
-    document.getElementById('qualitySearch').oninput = e => { qualityKeyword = e.target.value; qualityPage = 1; renderQuality(); };
+    bindSearchInput('qualitySearch', (v) => { qualityKeyword = v; qualityPage = 1; }, renderQuality);
     document.getElementById('qualityCustomerSel').onchange = e => { qualityCustomerFilter = e.target.value; qualityPage=1; renderQuality(); };
     document.getElementById('qualityStatusSel').onchange = e => { qualityStatusFilter = e.target.value; qualityPage=1; renderQuality(); };
     document.getElementById('qualitySourceSel').onchange = e => { qualitySourceFilter = e.target.value; qualityPage=1; renderQuality(); };
@@ -922,7 +951,7 @@
     box.innerHTML = `<div class="card"><div class="row"><input id="shipmentSearch" class="grow" placeholder="搜索：编号/类型/发货地/收货地/客户/项目/型号/快递单号" value="${escapeHtml(shipmentKeyword)}" /><select id="shipmentCustomerSel" style="max-width:150px">${customerOptions}</select><select id="shipmentStatusSel" style="max-width:130px">${['全部',...SHIPMENT_STATUS].map(s=>`<option ${shipmentStatusFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="shipmentFeedbackSel" style="max-width:120px">${['全部','已反馈','未反馈'].map(s=>`<option ${shipmentFeedbackFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="shipmentArchiveSel" style="max-width:120px">${['未归档','已归档','全部'].map(s=>`<option ${shipmentArchiveFilter===s?'selected':''}>${s}</option>`).join('')}</select><select id="shipmentSortSel" style="max-width:150px">${['更新时间(新->旧)','发货日期(近->远)','创建时间(新->旧)'].map(s=>`<option ${shipmentSort===s?'selected':''}>${s}</option>`).join('')}</select><button class="btn" id="shipmentArchiveToggle">${showShipmentArchived?'返回未归档':'查看归档发货记录'}</button><button class="btn primary" id="newShipmentBtn">新增发货记录</button></div><div class="row"><span class="muted">快捷筛选：</span><button class="btn small" data-qf-shipment="待发货">待发货</button><button class="btn small" data-qf-shipment="测试中">测试中</button><button class="btn small" data-qf-shipment="已完成">已完成</button><button class="btn small" data-qf-shipment="已归档">已归档</button><button class="btn small" data-qf-shipment="重置">重置</button></div></div>
     <div class="card"><table><thead><tr><th>客户</th><th>型号</th><th>数量</th><th>发货类型</th><th>发货日期</th><th>快递号</th><th>当前进展摘要</th><th>操作</th></tr></thead><tbody>${list.length ? list.map(s => `<tr><td>${escapeHtml(s.customerName||'-')}</td><td>${escapeHtml(s.model||'-')}</td><td>${escapeHtml(s.qty||'-')}</td><td>${escapeHtml(s.shipmentType||'-')}</td><td>${escapeHtml(s.shipDate||'-')}</td><td>${escapeHtml(s.trackingNo||'-')}</td><td><div class="one-line">${escapeHtml(s.progressNote||'-')}</div></td><td><button class="btn small" data-follow-shipment="${s.id}">跟进</button><button class="btn small" data-addrec-shipment="${s.id}">添加记录</button>${s.archived?`<button class="btn small" data-restore-shipment="${s.id}">恢复</button>`:`<button class="btn small" data-archive-shipment="${s.id}">归档</button>`}<button class="btn small" data-edit-shipment="${s.id}">编辑</button><button class="btn small danger" data-del-shipment="${s.id}">删除</button></td></tr>`).join('') : '<tr><td colspan="8" class="empty">暂无样机发货记录</td></tr>'}</tbody></table></div>
     <div class="card"><div class="row"><span class="muted">总发货记录：${total}</span><label style="margin:0;">每页<select id="shipmentPageSizeSel" style="width:90px; margin-left:6px;">${[10,20,50,100].map(n => `<option value="${n}" ${shipmentPageSize===n?'selected':''}>${n}</option>`).join('')}</select></label><button class="btn small" id="shipmentPrevPage" ${shipmentPage<=1?'disabled':''}>上一页</button><span class="muted">第 ${shipmentPage} / ${totalPages} 页</span><button class="btn small" id="shipmentNextPage" ${shipmentPage>=totalPages?'disabled':''}>下一页</button></div></div>`;
-    document.getElementById('shipmentSearch').oninput = e => { shipmentKeyword = e.target.value; shipmentPage=1; renderShipments(); };
+    bindSearchInput('shipmentSearch', (v) => { shipmentKeyword = v; shipmentPage = 1; }, renderShipments);
     document.getElementById('shipmentCustomerSel').onchange = e => { shipmentCustomerFilter = e.target.value; shipmentPage=1; renderShipments(); };
     document.getElementById('shipmentStatusSel').onchange = e => { shipmentStatusFilter = e.target.value; shipmentPage=1; renderShipments(); };
     document.getElementById('shipmentFeedbackSel').onchange = e => { shipmentFeedbackFilter = e.target.value; shipmentPage=1; renderShipments(); };
