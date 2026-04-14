@@ -135,6 +135,9 @@
   let shipmentSort = '更新时间(新->旧)';
   let showShipmentArchived = false;
   let shipmentQuickMode = '';
+  let homeShowAllToday = false;
+  let homeShowAllWeek = false;
+  let homeShowAllOverdue = false;
 
   function load() {
     try {
@@ -157,10 +160,10 @@
     return { projectCode:'', sapNo:'', workStatus:'进行中', priority:'中', currentProgress:'', completeDate:'', nextFollowDate:'', followItem:'', followDone:false, needFollowUp:false, attachments:[], followUps:[], followLogs:[], ...p };
   }
   function normalizeQuality(q) {
-    return { complaintNo:'', sapNo:'', motorModel:'', progressNote:'', nextStep:'', source:'客户投诉', responsibility:'待确认', isClosed:false, closeDate:'', archived:false, attachments:[], followLogs:[], ...q };
+    return { complaintNo:'', sapNo:'', motorModel:'', progressNote:'', nextStep:'', source:'客户投诉', responsibility:'待确认', isClosed:false, closeDate:'', nextFollowDate:'', archived:false, attachments:[], followLogs:[], ...q };
   }
   function normalizeShipment(s) {
-    return { shipmentNo:'', sapNo:'', shipmentType:'其他', shipFrom:'', shipTo:'', progressNote:'', statusNote:'', receivedFeedback:false, archived:false, attachments:[], followLogs:[], ...s };
+    return { shipmentNo:'', sapNo:'', shipmentType:'其他', shipFrom:'', shipTo:'', progressNote:'', statusNote:'', nextFollowDate:'', receivedFeedback:false, archived:false, attachments:[], followLogs:[], ...s };
   }
 
   function setTab(tab) {
@@ -446,35 +449,32 @@
     save(); renderAll();
   }
   function markSimpleFollow(listName, id) {
-    data[listName] = data[listName].map(x => x.id===id ? { ...x, followDone: !x.followDone, updatedAt: now() } : x);
+    const pick = prompt('设置下次跟进：输入 1(明天) / 3(3天后) / 7(7天后) / d(标记完成) / 或直接输入日期 YYYY-MM-DD', '1');
+    if (pick === null) return;
+    const today = new Date().toISOString().slice(0,10);
+    const resolveDate = (v) => {
+      if (v === '1') return addDays(today, 1);
+      if (v === '3') return addDays(today, 3);
+      if (v === '7') return addDays(today, 7);
+      return normalizeDate(v);
+    };
+    const markDone = pick.trim().toLowerCase() === 'd';
+    const nextDate = markDone ? '' : resolveDate(pick.trim());
+    if (!markDone && !nextDate) return alert('日期格式无效，请输入 YYYY-MM-DD');
+    data[listName] = data[listName].map(x => x.id===id ? { ...x, followDone: !!markDone, nextFollowDate: nextDate, updatedAt: now() } : x);
     save(); renderAll();
   }
-  function getUnifiedPendingFollowItems() {
-    const projectItems = data.projects
-      .filter(p => !p.followDone && !['已完成','已归档'].includes(p.workStatus||''))
-      .map(p => ({
-        module: '项目',
-        title: p.name || p.projectCode || '未命名项目',
-        detail: `${customerName(p.customerId)} / ${p.followItem || p.nextAction || '待补充跟进事项'}`,
-        date: p.nextFollowDate || ''
-      }));
-    const qualityItems = data.qualityIssues
-      .filter(q => !q.followDone && !q.archived && q.status !== '已关闭')
-      .map(q => ({
-        module: '质量问题',
-        title: q.title || q.complaintNo || q.motorModel || '未命名问题',
-        detail: `${q.customerName || '未知客户'} / ${q.progressNote || q.nextStep || '待补充跟进事项'}`,
-        date: q.deadline || ''
-      }));
-    const shipmentItems = data.shipments
-      .filter(s => !s.followDone && !s.archived && s.status !== '已完成')
-      .map(s => ({
-        module: '样机发货',
-        title: s.model || s.shipmentNo || '未命名发货',
-        detail: `${s.customerName || '未知客户'} / ${s.progressNote || s.statusNote || '待补充跟进事项'}`,
-        date: s.shipDate || ''
-      }));
-    return [...projectItems, ...qualityItems, ...shipmentItems].sort((a, b) => (a.date || '9999-12-31').localeCompare(b.date || '9999-12-31'));
+  function getDashboardScheduledItems() {
+    const fromProjects = data.projects
+      .filter(p => !!p.nextFollowDate && !p.followDone && !['已完成','已归档'].includes(p.workStatus||''))
+      .map(p => ({ module:'项目', title:p.name || p.projectCode || '未命名项目', detail:`${customerName(p.customerId)} / ${p.followItem || p.nextAction || '待补充跟进事项'}`, date:p.nextFollowDate }));
+    const fromQuality = data.qualityIssues
+      .filter(q => !!q.nextFollowDate && !q.followDone && !q.archived && q.status !== '已关闭')
+      .map(q => ({ module:'质量问题', title:q.title || q.complaintNo || q.motorModel || '未命名问题', detail:`${q.customerName || '未知客户'} / ${q.progressNote || q.nextStep || '待补充跟进事项'}`, date:q.nextFollowDate }));
+    const fromShipments = data.shipments
+      .filter(s => !!s.nextFollowDate && !s.followDone && !s.archived && s.status !== '已完成')
+      .map(s => ({ module:'样机发货', title:s.model || s.shipmentNo || '未命名发货', detail:`${s.customerName || '未知客户'} / ${s.progressNote || s.statusNote || '待补充跟进事项'}`, date:s.nextFollowDate }));
+    return [...fromProjects, ...fromQuality, ...fromShipments].sort((a,b) => (a.date || '').localeCompare(b.date || ''));
   }
 
   function renderDashboard() {
@@ -483,14 +483,14 @@
     data.projects.forEach(p => count[p.stage] = (count[p.stage] || 0) + 1);
     const todayStr = new Date().toISOString().slice(0,10);
     const weekEnd = (() => { const d = new Date(); const day = d.getDay() || 7; d.setDate(d.getDate() + (7 - day)); return d.toISOString().slice(0,10); })();
-    const reminders = data.projects.filter(p => p.nextFollowDate && !p.followDone && !['已完成','已归档'].includes(p.workStatus||''));
-    const todayFollow = reminders.filter(p => p.nextFollowDate === todayStr);
-    const weekFollow = reminders.filter(p => p.nextFollowDate > todayStr && p.nextFollowDate <= weekEnd);
-    const overdueFollow = reminders.filter(p => p.nextFollowDate < todayStr);
+    const reminders = getDashboardScheduledItems();
+    const todayFollow = reminders.filter(p => p.date === todayStr);
+    const weekFollow = reminders.filter(p => p.date > todayStr && p.date <= weekEnd);
+    const oldCutoff = addDays(todayStr, -60);
+    const overdueFollow = reminders.filter(p => p.date < todayStr && p.date >= oldCutoff);
     const openQualityCount = data.qualityIssues.filter(q => q.status !== '已关闭').length;
     const pendingShipmentCount = data.shipments.filter(s => s.status === '待发货' || s.status === '已发货').length;
     const recentProjectUpdates = [...data.projects].filter(p => p.workStatus !== '已归档').sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt)).slice(0,8);
-    const unifiedPending = getUnifiedPendingFollowItems();
 
     box.innerHTML = `
       <div class="kpis">
@@ -500,10 +500,9 @@
         <div class="kpi"><div class="muted">待确认样机发货</div><div class="n">${pendingShipmentCount}</div></div>
       </div>
       <div class="card"><h3 class="section-title">跟进提醒汇总</h3><div class="row"><span class="badge warn">今天待跟进 ${todayFollow.length} 条</span><span class="badge overdue">已逾期 ${overdueFollow.length} 条</span><button class="btn small" id="askNotifyBtn">开启浏览器提醒</button></div></div>
-      <div class="card"><h3 class="section-title">今天要跟进</h3>${todayFollow.length?`<ul>${todayFollow.map(p=>`<li>${escapeHtml(p.name)}（${escapeHtml(customerName(p.customerId))}）- ${escapeHtml(p.followItem||'未填写事项')}</li>`).join('')}</ul>`:'<div class="empty">今天无待跟进</div>'}</div>
-      <div class="card"><h3 class="section-title">本周要跟进</h3>${weekFollow.length?`<ul>${weekFollow.map(p=>`<li>${escapeHtml(p.name)}（${escapeHtml(customerName(p.customerId))}，${escapeHtml(p.nextFollowDate)}）- ${escapeHtml(p.followItem||'未填写事项')}</li>`).join('')}</ul>`:'<div class="empty">本周暂无新增跟进</div>'}</div>
-      <div class="card"><h3 class="section-title">已逾期未跟进</h3>${overdueFollow.length?`<ul>${overdueFollow.map(p=>`<li><span class="badge overdue">逾期</span> ${escapeHtml(p.name)}（${escapeHtml(customerName(p.customerId))}，应跟进日期 ${escapeHtml(p.nextFollowDate)}）- ${escapeHtml(p.followItem||'未填写事项')}</li>`).join('')}</ul>`:'<div class="empty">暂无逾期</div>'}</div>
-      <div class="card"><h3 class="section-title">待跟进事项（统一）</h3>${unifiedPending.length?`<ul>${unifiedPending.map(i=>`<li>[${escapeHtml(i.module)}] ${escapeHtml(i.title)}${i.date?`（${escapeHtml(i.date)}）`:''} - ${escapeHtml(i.detail)}</li>`).join('')}</ul>`:'<div class="empty">暂无待跟进事项</div>'}</div>
+      <div class="card"><h3 class="section-title">今天要跟进</h3>${(homeShowAllToday?todayFollow:todayFollow.slice(0,5)).length?`<ul>${(homeShowAllToday?todayFollow:todayFollow.slice(0,5)).map(p=>`<li>[${escapeHtml(p.module)}] ${escapeHtml(p.title)}（${escapeHtml(p.date)}）- ${escapeHtml(p.detail)}</li>`).join('')}</ul>${todayFollow.length>5?`<button class="btn small" id="toggleTodayFollow">${homeShowAllToday?'收起':'查看全部'}</button>`:''}`:'<div class="empty">今天无待跟进</div>'}</div>
+      <div class="card"><h3 class="section-title">本周要跟进</h3>${(homeShowAllWeek?weekFollow:weekFollow.slice(0,5)).length?`<ul>${(homeShowAllWeek?weekFollow:weekFollow.slice(0,5)).map(p=>`<li>[${escapeHtml(p.module)}] ${escapeHtml(p.title)}（${escapeHtml(p.date)}）- ${escapeHtml(p.detail)}</li>`).join('')}</ul>${weekFollow.length>5?`<button class="btn small" id="toggleWeekFollow">${homeShowAllWeek?'收起':'查看全部'}</button>`:''}`:'<div class="empty">本周暂无新增跟进</div>'}</div>
+      <div class="card"><h3 class="section-title">已逾期未跟进</h3>${(homeShowAllOverdue?overdueFollow:overdueFollow.slice(0,5)).length?`<ul>${(homeShowAllOverdue?overdueFollow:overdueFollow.slice(0,5)).map(p=>`<li><span class="badge overdue">逾期</span> [${escapeHtml(p.module)}] ${escapeHtml(p.title)}（应跟进日期 ${escapeHtml(p.date)}）- ${escapeHtml(p.detail)}</li>`).join('')}</ul>${overdueFollow.length>5?`<button class="btn small" id="toggleOverdueFollow">${homeShowAllOverdue?'收起':'查看全部'}</button>`:''}`:'<div class="empty">暂无逾期</div>'}</div>
       <div class="card"><h3 class="section-title">最近更新项目</h3>${recentProjectUpdates.length?`<ul>${recentProjectUpdates.map(p=>`<li>${escapeHtml(p.name)}（${escapeHtml(customerName(p.customerId))}）- ${fmt(p.updatedAt)}</li>`).join('')}</ul>`:'<div class="empty">暂无项目更新</div>'}</div>
       <div class="card"><h3 class="section-title">项目阶段统计</h3><div class="row">${STAGES.map(s => `<span class="badge" style="background:${stageColor[s]}">${s}：${count[s]||0}</span>`).join('')}</div></div>
     `;
@@ -513,6 +512,12 @@
       const p = await Notification.requestPermission();
       alert(p === 'granted' ? '已开启通知提醒' : '未开启通知权限');
     };
+    const todayBtn = document.getElementById('toggleTodayFollow');
+    if (todayBtn) todayBtn.onclick = () => { homeShowAllToday = !homeShowAllToday; renderDashboard(); };
+    const weekBtn = document.getElementById('toggleWeekFollow');
+    if (weekBtn) weekBtn.onclick = () => { homeShowAllWeek = !homeShowAllWeek; renderDashboard(); };
+    const overdueBtn = document.getElementById('toggleOverdueFollow');
+    if (overdueBtn) overdueBtn.onclick = () => { homeShowAllOverdue = !homeShowAllOverdue; renderDashboard(); };
     notifyTodayFollow(todayFollow);
   }
 
